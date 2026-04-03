@@ -136,7 +136,7 @@ namespace msf
 
             if (reloadedConfig.disableInMenus) {
                 auto* ui = RE::UI::GetSingleton();
-                if (ui && (ui->IsShowingMenus() || ui->GameIsPaused() || ui->IsApplicationMenuOpen())) {
+                if (ui && (ui->GameIsPaused() || ui->IsApplicationMenuOpen())) {
                     g_lastCameraState = "Menu";
                     LogLookHookCountersIfNeeded(reloadedConfig);
                     g_originalProcessMouseMove(handler, event, data);
@@ -266,7 +266,7 @@ namespace msf
 
             if (reloadedConfig.disableInMenus) {
                 auto* ui = RE::UI::GetSingleton();
-                if (ui && (ui->IsShowingMenus() || ui->GameIsPaused() || ui->IsApplicationMenuOpen())) {
+                if (ui && (ui->GameIsPaused() || ui->IsApplicationMenuOpen())) {
                     g_originalProcessThumbstick(handler, event, data);
                     return;
                 }
@@ -300,12 +300,18 @@ namespace msf
                 return;
             }
 
+            // Capture raw symmetric joystick values before the engine applies its
+            // own per-axis sensitivity scaling, so our transform produces true 1:1
+            // X/Y parity regardless of Skyrim's internal gamepad sensitivity settings.
+            const float rawX = event->xValue;
+            const float rawY = event->yValue;
+
             g_originalProcessThumbstick(handler, event, data);
             if (!data) {
                 return;
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(data->lookInputVec.x, data->lookInputVec.y, reloadedConfig);
+            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig);
             data->lookInputVec.x = std::clamp(outX, -1.0F, 1.0F);
             data->lookInputVec.y = std::clamp(outY, -1.0F, 1.0F);
         }
