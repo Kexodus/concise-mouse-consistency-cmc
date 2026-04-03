@@ -29,19 +29,21 @@ Validate in first-person and third-person:
 ## 5) Compatibility
 
 - Smoke-test with SmoothCam and Improved Camera enabled
-- Verify compatibility toggles affect behavior as documented
+- Verify auto-detection adjusts policy correctly (third-person intervention reduced)
+- Verify `bForceOverrideSmoothCam` / `bForceOverrideImprovedCamera` restore full intervention
 
 ## 6) Edge cases
 
 - alt-tab out/in: no spikes or stuck deltas
-- menu transitions: gating works when menu filtering enabled
-- gamepad transform only when explicitly enabled
+- menu transitions: transforms gate correctly on `GameIsPaused() || IsApplicationMenuOpen()`
+- gamepad transform only when `bAffectGamepadLook=true`
+- with heavily modded setups where `ControlMap::IsLookingControlsEnabled()` returns false: confirm `bDisableWhenLookControlsDisabled=false` default keeps transforms active
 
 ## 7) FPS and device matrix
 
 - 30 / 60 / 120 / 240 FPS
 - high polling mice (1000Hz+)
-- confirm clamp behavior is stable at extremes
+- confirm focus-spike suppression is stable after alt-tab at high framerates
 
 ## 8) Release Readiness
 

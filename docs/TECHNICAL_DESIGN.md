@@ -23,11 +23,11 @@ CMC has four parts:
 
 - Input deltas: `dx`, `dy`
 - Output:
-  - `outX = dx * global * xMultiplier`
-  - `outY = dy * global * yMultiplier`
-- Strict mode clamps to `maxDeltaPerFrame`
+  - `outX = dx * global * mouseXAxisMultiplier` (or `gamepadXAxisMultiplier`)
+  - `outY = dy * global * mouseYAxisMultiplier` (or `gamepadYAxisMultiplier`)
+- `ApplyTransform` takes an `isGamepad` bool to select the correct multiplier pair
 
-Default values keep parity (`xMultiplier = yMultiplier = 1.0`).
+Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` to compensate for Skyrim's FoV asymmetry on ultrawide displays.
 
 ## Runtime strategy
 
@@ -40,7 +40,7 @@ Default values keep parity (`xMultiplier = yMultiplier = 1.0`).
 INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 
 - `[General]` core runtime toggles and sensitivity
-- `[Advanced]` multipliers, clamp, verbose logging
+- `[Advanced]` per-device axis multipliers and verbose logging
 - `[Compatibility]` SmoothCam / Improved Camera policy toggles
 
 ## Compatibility behavior
@@ -48,6 +48,7 @@ INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 Current compatibility policy is intentionally narrow:
 
 - targets SmoothCam + Improved Camera
+- auto-detection drives policy via `_improvedCameraDetected` / `_smoothCamDetected` flags directly; no override fields
 - may reduce third-person intervention / smoothing-removal hooks
 - keeps core sensitivity transform active
 

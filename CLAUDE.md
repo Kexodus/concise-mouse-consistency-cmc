@@ -44,7 +44,7 @@ All hooks use `REL::Relocation` (CommonLibSSE-NG) to patch vtables — no hardco
 
 Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call.
 
-Transform: `out = delta * globalSensitivity * axisMultiplier`. Strict mode clamps to `maxDeltaPerFrame`.
+Transform: `out = delta * globalSensitivity * axisMultiplier`. `ApplyTransform` takes an `isGamepad` bool to select mouse or gamepad multipliers (`mouseX/Y` vs `gamepadX/Y`).
 
 Both hooks reload `ConfigManager` on every call via `ReloadIfChanged()` (file-watch with mutex), so INI edits apply without restart.
 
@@ -54,11 +54,11 @@ Both hooks reload `ConfigManager` on every call via `ReloadIfChanged()` (file-wa
 
 ### Compatibility (`src/compat/Compatibility.cpp`)
 
-`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` returns a `CompatibilityPolicy` that may set `allowThirdPersonIntervention = false` or `installSmoothingRemovalHooks = false` to avoid conflicts. Config overrides (`forceOverrideSmoothCam`, `overrideDetectedSmoothCam`, etc.) can bypass auto-detection.
+`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` returns a `CompatibilityPolicy` that may set `allowThirdPersonIntervention = false` or `installSmoothingRemovalHooks = false` to avoid conflicts. Policy is driven directly from `_improvedCameraDetected` / `_smoothCamDetected` flags; `bForceOverrideSmoothCam` / `bForceOverrideImprovedCamera` in INI can bypass auto-detection.
 
 ### Crash guard
 
-On startup, if `MouseSensitivityFix.runtime.lock` already exists (previous session didn't clean up = crash), the counter in `.crashguard.state` increments. At threshold (`crashDisableThreshold`, default 3) the plugin self-disables for the session. The lock file is deleted on clean `Plugin::Shutdown`.
+On startup, if `MouseSensitivityFix.runtime.lock` already exists (previous session didn't clean up = crash), the counter in `.crashguard.state` increments. At the internal threshold (default 3) the plugin self-disables for the session. The lock file is deleted on clean `Plugin::Shutdown`. (`crashDisableThreshold` and `crashWindowSeconds` are internal-only and not exposed in the INI.)
 
 ## Local-only directories
 
