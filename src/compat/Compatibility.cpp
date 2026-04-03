@@ -50,16 +50,6 @@ namespace
         return false;
     }
 
-    bool ApplyOverride(bool detectedValue, int overrideValue)
-    {
-        if (overrideValue == 0) {
-            return false;
-        }
-        if (overrideValue == 1) {
-            return true;
-        }
-        return detectedValue;
-    }
 }
 
 namespace msf
@@ -92,8 +82,8 @@ namespace msf
     CompatibilityPolicy CompatibilityManager::EvaluatePolicy(const ConfigValues& config) const
     {
         CompatibilityPolicy policy{};
-        const bool improvedDetected = ApplyOverride(_improvedCameraDetected, config.overrideDetectedImprovedCamera);
-        const bool smoothDetected = ApplyOverride(_smoothCamDetected, config.overrideDetectedSmoothCam);
+        const bool improvedDetected = _improvedCameraDetected;
+        const bool smoothDetected = _smoothCamDetected;
 
         if (!config.useCompatibilityPresets) {
             policy.reason = "Compatibility presets disabled by user.";

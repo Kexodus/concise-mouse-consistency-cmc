@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -14,7 +13,6 @@
 #include <RE/N/NiPoint2.h>
 #include <RE/Offsets_VTABLE.h>
 #include <RE/P/PlayerCamera.h>
-#include <RE/P/PlayerCharacter.h>
 #include <RE/P/PlayerControlsData.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
@@ -36,6 +34,8 @@ namespace msf
         ThirdPersonHandleLookInputFn g_originalThirdPersonHandleLookInput{ nullptr };
         HookCoordinator* g_activeCoordinator{ nullptr };
         bool g_allowThirdPersonIntervention{ true };
+        bool g_mouseHookFiredOnce{ false };
+        bool g_thumbstickHookFiredOnce{ false };
 
         std::uint64_t g_lookHookCallsTotal{ 0 };
         std::uint64_t g_lookHookCallsFirstPerson{ 0 };
@@ -47,12 +47,20 @@ namespace msf
         float g_lastOutY{ 0.0F };
         std::string g_lastCameraState{ "Unknown" };
 
+        std::uint64_t g_thumbstickHookCallsTotal{ 0 };
+        std::uint64_t g_thumbstickTransformAppliedCount{ 0 };
+        float g_lastStickRawX{ 0.0F };
+        float g_lastStickRawY{ 0.0F };
+        float g_lastStickOutX{ 0.0F };
+        float g_lastStickOutY{ 0.0F };
+
         std::uint64_t g_thirdPersonHookCallsTotal{ 0 };
         std::uint64_t g_thirdPersonSmoothingAppliedCount{ 0 };
         std::chrono::steady_clock::time_point g_lastMouseEventTime{};
 
-        constexpr std::uint64_t kLookLogInterval = 240;
+        constexpr std::uint64_t kLookLogInterval = 30;
         constexpr std::uint64_t kThirdPersonLogInterval = 180;
+        constexpr std::uint64_t kStickLogInterval = 30;
 
         void LogLookHookCountersIfNeeded(const ConfigValues& config)
         {
@@ -85,6 +93,13 @@ namespace msf
 
         void ProcessMouseMoveHook(RE::LookHandler* handler, RE::MouseMoveEvent* event, RE::PlayerControlsData* data)
         {
+            if (!g_mouseHookFiredOnce) {
+                g_mouseHookFiredOnce = true;
+                LogInfo("Diag: ProcessMouseMoveHook first call. coordinator=" +
+                    std::string(g_activeCoordinator ? "set" : "null") +
+                    " event=" + std::string(event ? "valid" : "null"));
+            }
+
             if (!g_originalProcessMouseMove) {
                 return;
             }
@@ -118,16 +133,6 @@ namespace msf
                 g_originalProcessMouseMove(handler, event, data);
                 return;
             }
-            if (!reloadedConfig.allowInFirstPerson && !inThirdPerson) {
-                LogLookHookCountersIfNeeded(reloadedConfig);
-                g_originalProcessMouseMove(handler, event, data);
-                return;
-            }
-            if (!reloadedConfig.allowInThirdPerson && inThirdPerson) {
-                LogLookHookCountersIfNeeded(reloadedConfig);
-                g_originalProcessMouseMove(handler, event, data);
-                return;
-            }
             if (inThirdPerson && !reloadedConfig.enableThirdPersonHook) {
                 LogLookHookCountersIfNeeded(reloadedConfig);
                 g_originalProcessMouseMove(handler, event, data);
@@ -148,36 +153,6 @@ namespace msf
                 const auto* controlMap = RE::ControlMap::GetSingleton();
                 if (controlMap && !controlMap->IsLookingControlsEnabled()) {
                     g_lastCameraState = "LookControlsDisabled";
-                    LogLookHookCountersIfNeeded(reloadedConfig);
-                    g_originalProcessMouseMove(handler, event, data);
-                    return;
-                }
-            }
-
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (player && !reloadedConfig.allowInCombat) {
-                if (player->IsInCombat()) {
-                    g_lastCameraState = "CombatBlocked";
-                    LogLookHookCountersIfNeeded(reloadedConfig);
-                    g_originalProcessMouseMove(handler, event, data);
-                    return;
-                }
-            }
-
-            if (!reloadedConfig.allowInIronSights && camera) {
-                const auto current = camera->currentState.get();
-                const auto iron = camera->cameraStates[RE::CameraState::kIronSights].get();
-                if (current != nullptr && current == iron) {
-                    g_lastCameraState = "IronSightsBlocked";
-                    LogLookHookCountersIfNeeded(reloadedConfig);
-                    g_originalProcessMouseMove(handler, event, data);
-                    return;
-                }
-            }
-
-            if (!reloadedConfig.allowInBowZoom && camera) {
-                if (camera->bowZoomedIn) {
-                    g_lastCameraState = "BowZoomBlocked";
                     LogLookHookCountersIfNeeded(reloadedConfig);
                     g_originalProcessMouseMove(handler, event, data);
                     return;
@@ -211,7 +186,7 @@ namespace msf
             const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
                 data->lookInputVec.x,
                 data->lookInputVec.y,
-                reloadedConfig);
+                reloadedConfig, false);
 
             ++g_lookTransformAppliedCount;
             g_lastOutX = outX;
@@ -223,6 +198,14 @@ namespace msf
 
         void ProcessThumbstickHook(RE::LookHandler* handler, RE::ThumbstickEvent* event, RE::PlayerControlsData* data)
         {
+            if (!g_thumbstickHookFiredOnce) {
+                g_thumbstickHookFiredOnce = true;
+                LogInfo("Diag: ProcessThumbstickHook first call. coordinator=" +
+                    std::string(g_activeCoordinator ? "set" : "null") +
+                    " event=" + std::string(event ? "valid" : "null") +
+                    (event ? " isRight=" + std::string(event->IsRight() ? "true" : "false") : ""));
+            }
+
             if (!g_originalProcessThumbstick) {
                 return;
             }
@@ -251,14 +234,6 @@ namespace msf
                 g_originalProcessThumbstick(handler, event, data);
                 return;
             }
-            if (!reloadedConfig.allowInFirstPerson && !inThirdPerson) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
-            if (!reloadedConfig.allowInThirdPerson && inThirdPerson) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
             if (inThirdPerson && !reloadedConfig.enableThirdPersonHook) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
@@ -280,26 +255,6 @@ namespace msf
                 }
             }
 
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (player && !reloadedConfig.allowInCombat && player->IsInCombat()) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
-
-            if (!reloadedConfig.allowInIronSights && camera) {
-                const auto current = camera->currentState.get();
-                const auto iron = camera->cameraStates[RE::CameraState::kIronSights].get();
-                if (current != nullptr && current == iron) {
-                    g_originalProcessThumbstick(handler, event, data);
-                    return;
-                }
-            }
-
-            if (!reloadedConfig.allowInBowZoom && camera && camera->bowZoomedIn) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
-
             // Capture raw symmetric joystick values before the engine applies its
             // own per-axis sensitivity scaling, so our transform produces true 1:1
             // X/Y parity regardless of Skyrim's internal gamepad sensitivity settings.
@@ -311,9 +266,24 @@ namespace msf
                 return;
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig);
-            data->lookInputVec.x = std::clamp(outX, -1.0F, 1.0F);
-            data->lookInputVec.y = std::clamp(outY, -1.0F, 1.0F);
+            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig, true);
+            ++g_thumbstickTransformAppliedCount;
+            g_lastStickRawX = rawX;
+            g_lastStickRawY = rawY;
+            g_lastStickOutX = std::clamp(outX, -1.0F, 1.0F);
+            g_lastStickOutY = std::clamp(outY, -1.0F, 1.0F);
+            data->lookInputVec.x = g_lastStickOutX;
+            data->lookInputVec.y = g_lastStickOutY;
+
+            ++g_thumbstickHookCallsTotal;
+            if (reloadedConfig.verboseLogging && (g_thumbstickHookCallsTotal % kStickLogInterval) == 0) {
+                LogInfo(
+                    "HookCounter[LookHandler::ProcessThumbstick]"
+                    " total=" + std::to_string(g_thumbstickHookCallsTotal) +
+                    " transformed=" + std::to_string(g_thumbstickTransformAppliedCount) +
+                    " lastRaw=(" + std::to_string(g_lastStickRawX) + "," + std::to_string(g_lastStickRawY) + ")" +
+                    " lastOut=(" + std::to_string(g_lastStickOutX) + "," + std::to_string(g_lastStickOutY) + ")");
+            }
         }
 
         void ThirdPersonHandleLookInputHook(RE::ThirdPersonState* state, const RE::NiPoint2& input)
@@ -332,7 +302,7 @@ namespace msf
             const auto config = ConfigManager::Get().GetSnapshot();
             ++g_thirdPersonHookCallsTotal;
 
-            if (!config.enabled || !config.enableSmoothingRemovalHook || !config.strictRawInputMode) {
+            if (!config.enabled || !config.enableSmoothingRemovalHook) {
                 LogThirdPersonHookCountersIfNeeded(config);
                 return;
             }
@@ -507,25 +477,18 @@ namespace msf
         LogInfo("Mouse hook registrations removed.");
     }
 
-    std::pair<float, float> HookCoordinator::ApplyTransform(float deltaX, float deltaY, const ConfigValues& config) const
+    std::pair<float, float> HookCoordinator::ApplyTransform(float deltaX, float deltaY, const ConfigValues& config, bool isGamepad) const
     {
         if (!config.enabled || config.hotDisable) {
             return { deltaX, deltaY };
         }
 
         const auto scale = static_cast<float>(config.globalSensitivity);
-        const auto xMultiplier = static_cast<float>(config.xAxisMultiplier);
-        const auto yMultiplier = static_cast<float>(config.yAxisMultiplier);
+        const auto xMultiplier = static_cast<float>(isGamepad ? config.gamepadXAxisMultiplier : config.mouseXAxisMultiplier);
+        const auto yMultiplier = static_cast<float>(isGamepad ? config.gamepadYAxisMultiplier : config.mouseYAxisMultiplier);
 
-        float outX = deltaX * scale * xMultiplier;
-        float outY = deltaY * scale * yMultiplier;
-
-        if (config.strictRawInputMode) {
-            // Keep transform deterministic and avoid frame-dependent smoothing.
-            const auto maxDelta = static_cast<float>(config.maxDeltaPerFrame);
-            outX = std::clamp(outX, -maxDelta, maxDelta);
-            outY = std::clamp(outY, -maxDelta, maxDelta);
-        }
+        const float outX = deltaX * scale * xMultiplier;
+        const float outY = deltaY * scale * yMultiplier;
 
         return { outX, outY };
     }

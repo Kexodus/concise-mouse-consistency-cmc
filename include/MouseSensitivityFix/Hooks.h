@@ -20,7 +20,7 @@ namespace msf
         void Remove();
 
         // Shared transform entry point for eventual patch callbacks.
-        std::pair<float, float> ApplyTransform(float deltaX, float deltaY, const ConfigValues& config) const;
+        std::pair<float, float> ApplyTransform(float deltaX, float deltaY, const ConfigValues& config, bool isGamepad) const;
 
     private:
         bool RegisterHookPoint(HookRegistrationPoint point);
