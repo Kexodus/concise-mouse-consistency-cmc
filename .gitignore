@@ -1,0 +1,16 @@
+# Editor / IDE
+.cursor/
+.claude/
+
+# Build outputs
+build/
+build-commonlib/
+build-vs/
+
+# Local-only dependencies (per CLAUDE.md)
+.vcpkg/
+.skse-menu-framework-2/
+.knockout-ext/
+
+# Release staging
+release-staging/
