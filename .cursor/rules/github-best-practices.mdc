@@ -1,0 +1,29 @@
+---
+description: Enforce GitHub hygiene and safe repo practices
+alwaysApply: true
+---
+
+# GitHub Best Practices
+
+- Keep commits focused, small, and reviewable.
+- Never commit secrets, tokens, credentials, or personal data.
+- Use clear commit messages that explain intent.
+- Prefer PR-friendly changes and include validation notes when relevant.
+- Do not rewrite published history unless explicitly requested.
+- Do not force-push to protected/default branches unless explicitly requested.
+- Do not use destructive git commands unless explicitly requested.
+- Keep generated artifacts and local build outputs out of version control.
+- Verify author identity before committing/pushing.
+- Confirm branch status (`git status`) before commit and after commit.
+
+## Local Artifact Guardrails
+
+Treat these as local-only by default:
+- `.vcpkg/`
+- `.skse-menu-framework-2/`
+- `.knockout-ext/`
+- `build/`
+- `build-commonlib/`
+- `build-vs/`
+- `release-staging/`
+
