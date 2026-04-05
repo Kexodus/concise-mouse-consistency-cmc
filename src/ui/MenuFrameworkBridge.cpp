@@ -50,7 +50,7 @@ namespace msf
         bool g_lastSaveAttempted{ false };
         ConfigValues g_uiValues{};
 
-        const char* kMenuPath = "Mouse Sensitivity Fix/Settings";
+        const char* kMenuPath = "Concise Mouse Consistency/Settings";
         const auto kConfigPath = std::filesystem::path("Data/SKSE/Plugins/MouseSensitivityFix.ini");
 
         template <class T>
