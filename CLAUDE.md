@@ -20,7 +20,19 @@ cmake --build build-commonlib --config Release
 
 Output: `build-commonlib/Release/MouseSensitivityFix.dll`
 
-**Deploy for testing:** copy `MouseSensitivityFix.dll` and `dist/Data/SKSE/Plugins/MouseSensitivityFix.ini` to `<Skyrim>/Data/SKSE/Plugins/`. Check `MouseSensitivityFix.log` after launch for clean startup.
+**Deploy for testing:** After every successful build, automatically copy both files to the MO2 mod folder:
+
+```bash
+DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC)/SKSE/Plugins"
+
+cp "build-commonlib/Release/MouseSensitivityFix.dll" "$DEPLOY/"
+cp "dist/Data/SKSE/Plugins/MouseSensitivityFix.ini"  "$DEPLOY/"
+
+# Enable debug settings in the deployed INI for playtesting
+sed -i 's/bVerboseLogging=false/bVerboseLogging=true/' "$DEPLOY/MouseSensitivityFix.ini"
+```
+
+The source `dist/` INI always keeps `bVerboseLogging=false` (release default). Only the deployed copy gets it flipped to `true`. Check `MouseSensitivityFix.log` after launch for clean startup.
 
 There are no automated tests — validation is manual per `docs/TEST_PLAN.md`. Validate on runtimes `1.5.97`, `1.6.640`, latest Steam `1.6.x`, and GOG before release.
 
@@ -56,13 +68,28 @@ Both hooks reload `ConfigManager` on every call via `ReloadIfChanged()` (file-wa
 
 `CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` returns a `CompatibilityPolicy` that may set `allowThirdPersonIntervention = false` or `installSmoothingRemovalHooks = false` to avoid conflicts. Policy is driven directly from `_improvedCameraDetected` / `_smoothCamDetected` flags; `bForceOverrideSmoothCam` / `bForceOverrideImprovedCamera` in INI can bypass auto-detection.
 
-### Crash guard
-
-On startup, if `MouseSensitivityFix.runtime.lock` already exists (previous session didn't clean up = crash), the counter in `.crashguard.state` increments. At the internal threshold (default 3) the plugin self-disables for the session. The lock file is deleted on clean `Plugin::Shutdown`. (`crashDisableThreshold` and `crashWindowSeconds` are internal-only and not exposed in the INI.)
-
 ## Local-only directories
 
 Never commit: `.vcpkg/`, `.skse-menu-framework-2/`, `.knockout-ext/`, `build/`, `build-commonlib/`, `build-vs/`, `release-staging/`.
+
+## Playtesting
+
+When the user says **"I am playtesting"**, immediately read all `.log` files in:
+
+`%USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\`
+
+Read `MouseSensitivityFix.log` first, then any other SKSE logs present. Look for errors, warnings, hook diagnostics, and sampled scale values. Summarise findings without waiting to be asked.
+
+## Research log
+
+All findings across sessions — what works, what doesn't, and hard limits not worth revisiting — are tracked in `docs/research.md`.
+
+**When to update it:**
+- An approach is confirmed working in-game → add to **Works**
+- An approach is confirmed broken or has been tried and abandoned → add to **Doesn't work**
+- A hard engine/API limit is hit with no viable workaround → add to **Hard limits**
+
+Read `docs/research.md` at the start of any session involving hooks, compatibility, or sensitivity math to avoid re-investigating settled questions. Update it whenever a session produces a new confirmed finding.
 
 ## Release packaging
 

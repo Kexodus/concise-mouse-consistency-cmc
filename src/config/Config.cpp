@@ -92,8 +92,6 @@ namespace msf
                 loaded.enabled = ParseBool(value, loaded.enabled);
             } else if (key == "bHotDisable") {
                 loaded.hotDisable = ParseBool(value, loaded.hotDisable);
-            } else if (key == "bEnableCrashGuard") {
-                loaded.enableCrashGuard = ParseBool(value, loaded.enableCrashGuard);
             } else if (key == "bVerboseLogging") {
                 loaded.verboseLogging = ParseBool(value, loaded.verboseLogging);
             } else if (key == "bEnableFirstPersonHook") {
@@ -134,6 +132,14 @@ namespace msf
                 loaded.gamepadXAxisMultiplier = std::clamp(ParseDouble(value, loaded.gamepadXAxisMultiplier), 0.01, 20.0);
             } else if (key == "fGamepadYAxisMultiplier") {
                 loaded.gamepadYAxisMultiplier = std::clamp(ParseDouble(value, loaded.gamepadYAxisMultiplier), 0.01, 20.0);
+            } else if (key == "fBowAimMouseXMultiplier") {
+                loaded.bowAimMouseXMultiplier = std::clamp(ParseDouble(value, loaded.bowAimMouseXMultiplier), 0.01, 20.0);
+            } else if (key == "fBowAimMouseYMultiplier") {
+                loaded.bowAimMouseYMultiplier = std::clamp(ParseDouble(value, loaded.bowAimMouseYMultiplier), 0.01, 20.0);
+            } else if (key == "fBowAimGamepadXMultiplier") {
+                loaded.bowAimGamepadXMultiplier = std::clamp(ParseDouble(value, loaded.bowAimGamepadXMultiplier), 0.01, 20.0);
+            } else if (key == "fBowAimGamepadYMultiplier") {
+                loaded.bowAimGamepadYMultiplier = std::clamp(ParseDouble(value, loaded.bowAimGamepadYMultiplier), 0.01, 20.0);
             }
         }
 
@@ -159,7 +165,6 @@ namespace msf
         output << "[General]\n";
         output << "bEnabled=" << (_values.enabled ? "true" : "false") << "\n";
         output << "bHotDisable=" << (_values.hotDisable ? "true" : "false") << "\n";
-        output << "bEnableCrashGuard=" << (_values.enableCrashGuard ? "true" : "false") << "\n";
         output << "fGlobalSensitivity=" << _values.globalSensitivity << "\n";
         output << "bEnableFirstPersonHook=" << (_values.enableFirstPersonHook ? "true" : "false") << "\n";
         output << "bEnableThirdPersonHook=" << (_values.enableThirdPersonHook ? "true" : "false") << "\n";
@@ -173,6 +178,10 @@ namespace msf
         output << "fMouseYAxisMultiplier=" << _values.mouseYAxisMultiplier << "\n";
         output << "fGamepadXAxisMultiplier=" << _values.gamepadXAxisMultiplier << "\n";
         output << "fGamepadYAxisMultiplier=" << _values.gamepadYAxisMultiplier << "\n";
+        output << "fBowAimMouseXMultiplier=" << _values.bowAimMouseXMultiplier << "\n";
+        output << "fBowAimMouseYMultiplier=" << _values.bowAimMouseYMultiplier << "\n";
+        output << "fBowAimGamepadXMultiplier=" << _values.bowAimGamepadXMultiplier << "\n";
+        output << "fBowAimGamepadYMultiplier=" << _values.bowAimGamepadYMultiplier << "\n";
         output << "bVerboseLogging=" << (_values.verboseLogging ? "true" : "false") << "\n";
         output << "[Compatibility]\n";
         output << "bUseCompatibilityPresets=" << (_values.useCompatibilityPresets ? "true" : "false") << "\n";
@@ -227,7 +236,6 @@ namespace msf
         std::scoped_lock guard(_lock);
         _values.enabled = updatedValues.enabled;
         _values.hotDisable = updatedValues.hotDisable;
-        _values.enableCrashGuard = updatedValues.enableCrashGuard;
         _values.verboseLogging = updatedValues.verboseLogging;
         _values.enableFirstPersonHook = updatedValues.enableFirstPersonHook;
         _values.enableThirdPersonHook = updatedValues.enableThirdPersonHook;
@@ -248,5 +256,9 @@ namespace msf
         _values.mouseYAxisMultiplier = std::clamp(updatedValues.mouseYAxisMultiplier, 0.01, 20.0);
         _values.gamepadXAxisMultiplier = std::clamp(updatedValues.gamepadXAxisMultiplier, 0.01, 20.0);
         _values.gamepadYAxisMultiplier = std::clamp(updatedValues.gamepadYAxisMultiplier, 0.01, 20.0);
+        _values.bowAimMouseXMultiplier = std::clamp(updatedValues.bowAimMouseXMultiplier, 0.01, 20.0);
+        _values.bowAimMouseYMultiplier = std::clamp(updatedValues.bowAimMouseYMultiplier, 0.01, 20.0);
+        _values.bowAimGamepadXMultiplier = std::clamp(updatedValues.bowAimGamepadXMultiplier, 0.01, 20.0);
+        _values.bowAimGamepadYMultiplier = std::clamp(updatedValues.bowAimGamepadYMultiplier, 0.01, 20.0);
     }
 }

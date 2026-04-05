@@ -7,17 +7,21 @@
 #include <string>
 
 #if MSF_USE_COMMONLIBSSE
+#include <RE/A/Actor.h>
 #include <RE/C/ControlMap.h>
+#include <RE/T/TESObjectWEAP.h>
 #include <RE/L/LookHandler.h>
 #include <RE/M/MouseMoveEvent.h>
 #include <RE/N/NiPoint2.h>
 #include <RE/Offsets_VTABLE.h>
 #include <RE/P/PlayerCamera.h>
+#include <RE/P/PlayerCharacter.h>
 #include <RE/P/PlayerControlsData.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
 #include <RE/U/UI.h>
 #include <REL/Relocation.h>
+#include <SKSE/Version.h>
 #endif
 
 namespace msf
@@ -28,6 +32,33 @@ namespace msf
         using ProcessThumbstickFn = void (*)(RE::LookHandler*, RE::ThumbstickEvent*, RE::PlayerControlsData*);
         using ProcessMouseMoveFn = void (*)(RE::LookHandler*, RE::MouseMoveEvent*, RE::PlayerControlsData*);
         using ThirdPersonHandleLookInputFn = void (*)(RE::ThirdPersonState*, const RE::NiPoint2&);
+
+        // ActorState is a base class of Actor at compile-time offset 0xB8 (SE layout).
+        // In AE 1.6.629+, TESObjectREFR grew by 8 bytes, shifting ActorState to 0xC0.
+        // The C++ compiler bakes in the SE offset, so direct access reads wrong memory on AE.
+        // These helpers use RelocateMemberIfNewer to read from the correct offset.
+        // actorState1 (contains meleeAttackState): SE 0xC0, AE 0xC8
+        // actorState2 (contains weaponState):      SE 0xC4, AE 0xCC
+        RE::ATTACK_STATE_ENUM GetAttackStateRelocated(const RE::PlayerCharacter* player) noexcept
+        {
+            const auto& as1 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState1>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC0, 0xC8);
+            return as1.meleeAttackState;
+        }
+
+        bool IsWeaponDrawnRelocated(const RE::PlayerCharacter* player) noexcept
+        {
+            const auto& as2 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState2>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC4, 0xCC);
+            switch (as2.weaponState) {
+            case RE::WEAPON_STATE::kDrawn:
+            case RE::WEAPON_STATE::kWantToSheathe:
+            case RE::WEAPON_STATE::kSheathing:
+                return true;
+            default:
+                return false;
+            }
+        }
 
         ProcessThumbstickFn g_originalProcessThumbstick{ nullptr };
         ProcessMouseMoveFn g_originalProcessMouseMove{ nullptr };
@@ -55,12 +86,53 @@ namespace msf
         float g_lastStickOutY{ 0.0F };
 
         std::uint64_t g_thirdPersonHookCallsTotal{ 0 };
+        std::string   g_lastBowDiag{ "." };
+        std::uint32_t g_lastAttackState{ 0 };
+        bool          g_lastWeaponDrawn{ false };
+        float g_lastRawPixelX{ 0.0F };
+        float g_lastRawPixelY{ 0.0F };
+        float g_lastEngineX{ 0.0F };
+        float g_lastEngineY{ 0.0F };
+        float g_lastBowMulX{ 1.0F };
+        float g_lastBowMulY{ 1.0F };
         std::uint64_t g_thirdPersonSmoothingAppliedCount{ 0 };
         std::chrono::steady_clock::time_point g_lastMouseEventTime{};
 
         constexpr std::uint64_t kLookLogInterval = 30;
         constexpr std::uint64_t kThirdPersonLogInterval = 180;
         constexpr std::uint64_t kStickLogInterval = 30;
+
+        // Sampled scale: ratio of lookInputVec units per raw mouse pixel at baseline sensitivity.
+        // Updated via EMA during normal play only (not during bow aim) to stay uncontaminated.
+        float g_sampledScaleX{ 0.0f };
+        float g_sampledScaleY{ 0.0f };
+        constexpr float kScaleEmaAlpha = 0.15f;
+
+        // Returns true when the player is actively drawing or aiming with a bow or crossbow.
+        // Uses ActorState::GetAttackState() range kBowDraw..kBowNextAttack.
+        // OAR-proof, no animation event dependency. Matches IC's proven IsAiming() approach.
+        // Returns true when the player is actively drawing or aiming with a bow or crossbow.
+        // Uses relocated ActorState::GetAttackState() range kBowDraw..kBowNextAttack.
+        // OAR-proof, no animation event dependency. Matches IC's proven IsAiming() approach.
+        bool DetectBowAim(RE::PlayerCharacter* player) noexcept
+        {
+            if (!player) return false;
+            const auto attackState = GetAttackStateRelocated(player);
+            return attackState >= RE::ATTACK_STATE_ENUM::kBowDraw &&
+                   attackState <= RE::ATTACK_STATE_ENUM::kBowNextAttack;
+        }
+
+        // Diagnostic character for bow aim state logging.
+        // Returns attack state value as char (8-D hex) when in bow range, '.' otherwise.
+        char BowAimDiagChar(RE::PlayerCharacter* player) noexcept
+        {
+            if (!player) return '.';
+            const auto attackState = static_cast<std::uint32_t>(GetAttackStateRelocated(player));
+            if (attackState >= 8 && attackState <= 13) {
+                return "89ABCD"[attackState - 8];
+            }
+            return '.';
+        }
 
         void LogLookHookCountersIfNeeded(const ConfigValues& config)
         {
@@ -76,7 +148,14 @@ namespace msf
                 " transformed=" + std::to_string(g_lookTransformAppliedCount) +
                 " lastRaw=(" + std::to_string(g_lastRawX) + "," + std::to_string(g_lastRawY) + ")" +
                 " lastOut=(" + std::to_string(g_lastOutX) + "," + std::to_string(g_lastOutY) + ")" +
-                " camera=" + g_lastCameraState);
+                " sampledScale=(" + std::to_string(g_sampledScaleX) + "," + std::to_string(g_sampledScaleY) + ")" +
+                " camera=" + g_lastCameraState +
+                " bowDiag=" + g_lastBowDiag +
+                " atkState=" + std::to_string(g_lastAttackState) +
+                " wpnDrawn=" + std::to_string(g_lastWeaponDrawn) +
+                " rawPx=(" + std::to_string(g_lastRawPixelX) + "," + std::to_string(g_lastRawPixelY) + ")" +
+                " engine=(" + std::to_string(g_lastEngineX) + "," + std::to_string(g_lastEngineY) + ")" +
+                " bowMul=(" + std::to_string(g_lastBowMulX) + "," + std::to_string(g_lastBowMulY) + ")");
         }
 
         void LogThirdPersonHookCountersIfNeeded(const ConfigValues& config)
@@ -176,6 +255,10 @@ namespace msf
                 g_lastMouseEventTime = now;
             }
 
+            // Capture raw OS mouse pixels before the engine applies any state-based scaling.
+            const float rawPixelX = static_cast<float>(event->mouseInputX);
+            const float rawPixelY = static_cast<float>(event->mouseInputY);
+
             g_originalProcessMouseMove(handler, event, data);
             if (!data) {
                 return;
@@ -183,10 +266,66 @@ namespace msf
 
             g_lastRawX = data->lookInputVec.x;
             g_lastRawY = data->lookInputVec.y;
+
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (player) {
+                g_lastAttackState = static_cast<std::uint32_t>(GetAttackStateRelocated(player));
+                g_lastWeaponDrawn = IsWeaponDrawnRelocated(player);
+            }
+            const char bowDiag = BowAimDiagChar(player);
+            g_lastBowDiag = std::string(1, bowDiag);
+            const bool isBowAim = (bowDiag != '.');
+
+            // Update sampled scale only during normal (non-bow-aim) play.
+            // Tracks the engine's pixels-to-lookInputVec ratio at baseline sensitivity.
+            // Excluded during bow aim to prevent contamination by the engine's bow-zoom
+            // attenuation, which produces a smaller ratio for the same raw pixel delta.
+            if (!isBowAim) {
+                if (std::abs(rawPixelX) >= 1.0f) {
+                    const float kX = data->lookInputVec.x / rawPixelX;
+                    g_sampledScaleX = (g_sampledScaleX == 0.0f)
+                        ? kX : g_sampledScaleX + kScaleEmaAlpha * (kX - g_sampledScaleX);
+                }
+                if (std::abs(rawPixelY) >= 1.0f) {
+                    const float kY = data->lookInputVec.y / rawPixelY;
+                    g_sampledScaleY = (g_sampledScaleY == 0.0f)
+                        ? kY : g_sampledScaleY + kScaleEmaAlpha * (kY - g_sampledScaleY);
+                }
+            }
+
+            float deltaX = data->lookInputVec.x;
+            float deltaY = data->lookInputVec.y;
+
+            // Always capture raw pixels and engine-processed values for diagnostics.
+            g_lastRawPixelX = rawPixelX;
+            g_lastRawPixelY = rawPixelY;
+            g_lastEngineX = data->lookInputVec.x;
+            g_lastEngineY = data->lookInputVec.y;
+
+            if (isBowAim) {
+                g_lastCameraState = inThirdPerson ? "ThirdPerson_BowAim" : "FirstPerson_BowAim";
+                const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
+                const float bowY = static_cast<float>(reloadedConfig.bowAimMouseYMultiplier);
+                g_lastBowMulX = bowX;
+                g_lastBowMulY = bowY;
+                // Reconstruct the normal-sensitivity delta from raw pixels and the sampled
+                // scale, then apply bowX/Y relative to that baseline.
+                // bowX/Y = 1.0 produces exactly the same feel as normal first-person look.
+                // Falls back to the engine-attenuated delta if the scale is not yet seeded.
+                if (g_sampledScaleX != 0.0f && std::abs(rawPixelX) >= 1.0f) {
+                    deltaX = rawPixelX * g_sampledScaleX * bowX;
+                } else {
+                    deltaX *= bowX;
+                }
+                if (g_sampledScaleY != 0.0f && std::abs(rawPixelY) >= 1.0f) {
+                    deltaY = rawPixelY * g_sampledScaleY * bowY;
+                } else {
+                    deltaY *= bowY;
+                }
+            }
+
             const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
-                data->lookInputVec.x,
-                data->lookInputVec.y,
-                reloadedConfig, false);
+                deltaX, deltaY, reloadedConfig, false);
 
             ++g_lookTransformAppliedCount;
             g_lastOutX = outX;
@@ -258,8 +397,15 @@ namespace msf
             // Capture raw symmetric joystick values before the engine applies its
             // own per-axis sensitivity scaling, so our transform produces true 1:1
             // X/Y parity regardless of Skyrim's internal gamepad sensitivity settings.
-            const float rawX = event->xValue;
-            const float rawY = event->yValue;
+            float rawX = event->xValue;
+            float rawY = event->yValue;
+
+            if (DetectBowAim(RE::PlayerCharacter::GetSingleton())) {
+                const float bowX = static_cast<float>(reloadedConfig.bowAimGamepadXMultiplier);
+                const float bowY = static_cast<float>(reloadedConfig.bowAimGamepadYMultiplier);
+                if (bowX != 1.0f) { rawX *= bowX; }
+                if (bowY != 1.0f) { rawY *= bowY; }
+            }
 
             g_originalProcessThumbstick(handler, event, data);
             if (!data) {

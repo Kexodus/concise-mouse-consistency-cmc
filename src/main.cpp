@@ -1,6 +1,8 @@
 #include "MouseSensitivityFix/Plugin.h"
 #include "MouseSensitivityFix/Log.h"
 
+#include <cstdlib>
+
 #if MSF_USE_COMMONLIBSSE
 #include <SKSE/SKSE.h>
 
@@ -10,7 +12,11 @@ extern "C"
     {
         msf::InitializeLogging();
         SKSE::Init(skse);
-        return msf::Plugin::Initialize();
+        std::atexit([] { msf::Plugin::Shutdown(); });
+        if (!msf::Plugin::Initialize()) {
+            return false;
+        }
+        return true;
     }
 }
 #else
