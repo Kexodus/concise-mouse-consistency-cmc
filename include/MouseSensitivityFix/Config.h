@@ -11,12 +11,11 @@ namespace msf
     {
         bool enabled{ true };
         bool hotDisable{ false };
-        bool enableCrashGuard{ true };
         bool verboseLogging{ false };
         bool enableFirstPersonHook{ true };
         bool enableThirdPersonHook{ true };
         bool enableSmoothingRemovalHook{ true };
-        bool disableInMenus{ true };
+        bool disableInMenus{ false };
         bool disableWhenLookControlsDisabled{ false };
         bool affectGamepadLook{ true };
         bool suppressFocusSpike{ true };
@@ -29,14 +28,16 @@ namespace msf
         bool forceOverrideSmoothCam{ false };
         bool forceOverrideImprovedCamera{ false };
 
-        int crashDisableThreshold{ 3 };
-        int crashWindowSeconds{ 600 };
         int focusSpikeGapMs{ 350 };
         double globalSensitivity{ 1.0 };
         double mouseXAxisMultiplier{ 1.0 };
         double mouseYAxisMultiplier{ 1.0 };
         double gamepadXAxisMultiplier{ 1.0 };
         double gamepadYAxisMultiplier{ 0.55 };
+        double bowAimMouseXMultiplier{ 1.0 };
+        double bowAimMouseYMultiplier{ 1.0 };
+        double bowAimGamepadXMultiplier{ 1.0 };
+        double bowAimGamepadYMultiplier{ 1.0 };
     };
 
     class ConfigManager
