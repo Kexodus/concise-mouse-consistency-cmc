@@ -2,6 +2,12 @@
 
 Project: **Concise Mouse Consistency (CMC)**.
 
+## 0) Automated checks
+
+- Run dependency-free checks with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
+- Run the same tests against the full dependency graph with `ctest --preset plugin-release`.
+- Confirm tests cover transforms, runtime gates, live compatibility-policy changes, INI parsing/clamping/save/reload, case-insensitive DLL detection, and serialized config callbacks.
+
 ## 1) Startup
 
 - Launch through SKSE loader.
@@ -25,11 +31,14 @@ Validate in first-person and third-person:
 - SKSE Menu Framework panel appears when installed
 - INI fallback works when framework is missing
 - changed values apply live and persist correctly
+- start with `bEnabled=false`, enable it in the UI, and verify transforms begin without restarting
+- change smoothing delegation and force-override settings live, then verify policy-update log entries
+- edit the INI rapidly while moving the mouse and verify the final loaded settings win without duplicate hook installation
 
 ## 5) Compatibility
 
 - Smoke-test with SmoothCam and Improved Camera enabled
-- Verify auto-detection adjusts policy correctly (third-person intervention reduced)
+- Verify auto-detection delegates third-person smoothing while keeping sensitivity transforms active
 - Verify `bForceOverrideSmoothCam` / `bForceOverrideImprovedCamera` restore full intervention
 
 ## 6) Edge cases
@@ -50,3 +59,4 @@ Validate in first-person and third-person:
 - package has only required runtime files + docs
 - clean-profile install works
 - known issues are documented
+- update `docs/RUNTIME_VALIDATION.md` with runtime version, build commit, result, and evidence

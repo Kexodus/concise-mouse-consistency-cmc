@@ -10,11 +10,11 @@ CMC has four parts:
    - SKSE entry and runtime init
    - logging startup
 2. **Hooks**
-   - mouse/gamepad look interception
+   - permanently installed mouse/gamepad look interception
    - sensitivity transform and smoothing-related handling
 3. **Config**
    - INI source of truth
-   - live reload and clamped values
+   - throttled live reload, clamped values, and serialized change notifications
 4. **UI bridge**
    - SKSE Menu Framework panel
    - in-memory apply + INI save/reload
@@ -32,8 +32,13 @@ Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` 
 ## Runtime strategy
 
 - Built with `add_commonlibsse_plugin(...)`
-- CommonLibSSE-NG multi-runtime path for SE/AE/GOG support
+- CommonLibSSE-NG multi-runtime path for SE/AE/GOG/VR support
 - Relocation-based hooks isolated in hook module
+- all vtable hooks install transactionally at startup and remain installed
+- disabled features pass input through unchanged instead of removing/reinstalling hooks
+- config callbacks recompute compatibility policy and publish atomic runtime gates
+
+This keeps live enable/disable and compatibility override changes safe. Vtables are never patched from inside an input callback, and a partial installation is rolled back before initialization fails.
 
 ## Config model
 
@@ -41,6 +46,7 @@ INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 
 - `[General]` core runtime toggles and sensitivity
 - `[Advanced]` per-device axis multipliers and verbose logging
+- `iFocusSpikeGapMs` controls focus-regain suppression from 50 to 5000 ms
 - `[Compatibility]` SmoothCam / Improved Camera policy toggles
 
 ## Compatibility behavior
@@ -49,8 +55,10 @@ Current compatibility policy is intentionally narrow:
 
 - targets SmoothCam + Improved Camera
 - auto-detection drives policy via `_improvedCameraDetected` / `_smoothCamDetected` flags directly; no override fields
-- may reduce third-person intervention / smoothing-removal hooks
+- may delegate third-person smoothing removal to the detected camera mod
 - keeps core sensitivity transform active
+
+Compatibility and hook toggles apply immediately. Settings change behavior through atomic gates; they do not mutate hook registrations at runtime.
 
 ## Known risks
 

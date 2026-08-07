@@ -1,7 +1,7 @@
 {
   "name": "mouse-sensitivity-fix",
   "version-string": "0.1.0",
-  "description": "SKSE mouse sensitivity and smoothing removal plugin scaffold",
+  "description": "SKSE mouse and gamepad sensitivity consistency plugin",
   "dependencies": [
     "commonlibsse-ng"
   ]

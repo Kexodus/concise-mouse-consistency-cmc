@@ -14,13 +14,23 @@ namespace
     msf::CompatibilityManager g_compatibilityManager;
     msf::HookCoordinator g_hookCoordinator;
     msf::MenuFrameworkBridge g_menuFrameworkBridge;
+
+    void ReconcileRuntimePolicy(const msf::ConfigValues& config)
+    {
+        const auto policy = g_compatibilityManager.EvaluatePolicy(config);
+        if (g_hookCoordinator.UpdatePolicy(policy)) {
+            msf::LogInfo("Compatibility policy updated: mode=" +
+                         std::to_string(static_cast<int>(policy.mode)) +
+                         " reason=" + policy.reason);
+        }
+    }
 }
 
 namespace msf
 {
     bool Plugin::Initialize()
     {
-        LogInfo("Initializing plugin scaffold.");
+        LogInfo("Initializing Concise Mouse Consistency.");
 
         auto& configManager = ConfigManager::Get();
         const auto iniPath = std::filesystem::path("Data/SKSE/Plugins/MouseSensitivityFix.ini");
@@ -31,24 +41,19 @@ namespace msf
         }
         auto config = configManager.GetSnapshot();
 
-        if (config.hotDisable) {
-            config.enabled = false;
-            configManager.ApplyUiUpdate(config);
-            LogWarn("Hot-disable is active from INI. Plugin behavior disabled for this session.");
-        }
-
         g_compatibilityManager.ScanInstalledCameraMods(std::filesystem::path("Data/SKSE/Plugins"));
+        configManager.SetChangeCallback(ReconcileRuntimePolicy);
+        ReconcileRuntimePolicy(config);
 
-        const auto policy = g_compatibilityManager.EvaluatePolicy(configManager.GetSnapshot());
-        LogInfo("Compatibility policy mode=" + std::to_string(static_cast<int>(policy.mode)) +
-                " reason=" + policy.reason);
-
-        if (!g_hookCoordinator.Install(policy, configManager.GetSnapshot())) {
+        if (!g_hookCoordinator.Install()) {
+            configManager.SetChangeCallback({});
             LogError("Failed to install hooks.");
             return false;
         }
 
         if (!g_menuFrameworkBridge.Initialize()) {
+            configManager.SetChangeCallback({});
+            g_hookCoordinator.Remove();
             LogError("Failed to initialize menu framework bridge.");
             return false;
         }
@@ -59,6 +64,7 @@ namespace msf
 
     void Plugin::Shutdown()
     {
+        ConfigManager::Get().SetChangeCallback({});
         g_menuFrameworkBridge.Shutdown();
         g_hookCoordinator.Remove();
         LogInfo("Shutdown complete.");

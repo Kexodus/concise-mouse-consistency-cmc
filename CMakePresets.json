@@ -1,0 +1,64 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "unit-tests",
+      "displayName": "Dependency-free unit tests",
+      "binaryDir": "${sourceDir}/build-tests",
+      "cacheVariables": {
+        "MSF_BUILD_PLUGIN": "OFF",
+        "MSF_BUILD_TESTS": "ON",
+        "MSF_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "plugin-release",
+      "displayName": "Release plugin (CommonLibSSE-NG)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-commonlib",
+      "toolchainFile": "${sourceDir}/.vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "MSF_BUILD_PLUGIN": "ON",
+        "MSF_BUILD_TESTS": "ON",
+        "MSF_WARNINGS_AS_ERRORS": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "unit-tests",
+      "configurePreset": "unit-tests",
+      "configuration": "Release"
+    },
+    {
+      "name": "plugin-release",
+      "configurePreset": "plugin-release",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "unit-tests",
+      "configurePreset": "unit-tests",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "plugin-release",
+      "configurePreset": "plugin-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

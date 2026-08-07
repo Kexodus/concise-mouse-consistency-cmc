@@ -1,8 +1,10 @@
 #pragma once
 
+#include <chrono>
 #include <filesystem>
-#include <optional>
+#include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 
 namespace msf
@@ -43,9 +45,12 @@ namespace msf
     class ConfigManager
     {
     public:
+        using ChangeCallback = std::function<void(const ConfigValues&)>;
+
         static ConfigManager& Get();
 
         void SetConfigPath(std::filesystem::path iniPath);
+        void SetChangeCallback(ChangeCallback callback);
         bool LoadFromIni(const std::filesystem::path& iniPath);
         bool SaveToIni(const std::filesystem::path& iniPath) const;
         bool ReloadIfChanged();
@@ -55,8 +60,11 @@ namespace msf
 
     private:
         mutable std::mutex _lock;
+        mutable std::mutex _notificationLock;
         ConfigValues _values{};
         mutable std::filesystem::path _configPath{};
         mutable std::optional<std::filesystem::file_time_type> _lastWriteTime{};
+        std::chrono::steady_clock::time_point _lastReloadPoll{};
+        ChangeCallback _changeCallback{};
     };
 }

@@ -5,6 +5,7 @@
 # Build outputs
 build/
 build-commonlib/
+build-tests/
 build-vs/
 
 # Local-only dependencies (per CLAUDE.md)
@@ -14,3 +15,6 @@ build-vs/
 
 # Release staging
 release-staging/
+
+# Historical source archive, kept local and not published
+Old Project Files/

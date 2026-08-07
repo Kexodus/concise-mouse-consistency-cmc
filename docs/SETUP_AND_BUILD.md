@@ -5,9 +5,10 @@ Project: **Concise Mouse Consistency (CMC)**.
 ## Toolchain
 
 - Visual Studio 2022 (MSVC v143)
-- CMake
+- CMake 3.24+
+- Git and PowerShell 5.1+
 - SKSE64 development headers/runtime for target Skyrim version
-- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)
+- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG), installed automatically through the pinned vcpkg manifest
 
 ## Runtime Dependencies
 
@@ -15,14 +16,41 @@ Project: **Concise Mouse Consistency (CMC)**.
 - Address Library for SKSE Plugins
 - SKSE Menu Framework (optional for in-game UI)
 
-## Local Test Install
+## Clean-clone build
 
-1. Configure:
-   - `cmake -S . -B build-commonlib -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=".vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows`
-2. Build:
-   - `cmake --build build-commonlib --config Release`
-3. Copy runtime files to Skyrim:
+1. Bootstrap the exact vcpkg baseline from `vcpkg-configuration.json`:
+   - `./scripts/bootstrap-vcpkg.ps1`
+2. Configure:
+   - `cmake --preset plugin-release`
+3. Build the DLL and unit tests:
+   - `cmake --build --preset plugin-release`
+4. Run unit tests:
+   - `ctest --preset plugin-release`
+5. Create the mod-manager-ready ZIP:
+   - `cmake --build --preset plugin-release --target package`
+
+Outputs:
+
+- DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.1.0.zip`
+
+The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies.
+
+## Dependency-free tests
+
+The config, transform, and compatibility-policy tests do not require vcpkg, CommonLibSSE, or Skyrim:
+
+```powershell
+cmake --preset unit-tests
+cmake --build --preset unit-tests
+ctest --preset unit-tests
+```
+
+## Local test install
+
+1. Copy runtime files to Skyrim or an isolated mod-manager mod:
    - `Data/SKSE/Plugins/MouseSensitivityFix.dll`
    - `Data/SKSE/Plugins/MouseSensitivityFix.ini`
-4. Launch through SKSE.
-5. Check `MouseSensitivityFix.log` for clean startup.
+2. Launch through SKSE.
+3. Check `MouseSensitivityFix.log` for clean startup and all three hook-install messages.
+4. Follow `docs/TEST_PLAN.md` and record evidence in `docs/RUNTIME_VALIDATION.md`.

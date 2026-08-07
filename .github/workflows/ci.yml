@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Configure
+        run: cmake --preset unit-tests
+      - name: Build
+        run: cmake --build --preset unit-tests
+      - name: Test
+        run: ctest --preset unit-tests
+
+  plugin-build:
+    name: Plugin build and package
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Restore vcpkg cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .vcpkg
+            build-commonlib/vcpkg_installed
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'scripts/bootstrap-vcpkg.ps1') }}
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: ./scripts/bootstrap-vcpkg.ps1
+      - name: Configure plugin
+        run: cmake --preset plugin-release
+      - name: Build plugin
+        run: cmake --build --preset plugin-release
+      - name: Run unit tests
+        run: ctest --preset plugin-release
+      - name: Create release archive
+        run: cmake --build --preset plugin-release --target package
+      - name: Upload release archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Concise-Mouse-Consistency
+          path: build-commonlib/Concise-Mouse-Consistency-*.zip
+          if-no-files-found: error
