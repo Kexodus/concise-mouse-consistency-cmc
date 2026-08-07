@@ -28,7 +28,9 @@ jobs:
 
   plugin-build:
     name: Plugin build and package
-    runs-on: windows-latest
+    # CommonLibSSE-NG and the CMake preset require the VS 2022/v143 toolchain.
+    # Keep this job pinned because windows-latest can move to a newer VS image.
+    runs-on: windows-2022
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
