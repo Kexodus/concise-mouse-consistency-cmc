@@ -2,7 +2,7 @@
 
 CMC is a DLL-only SKSE plugin that keeps mouse and gamepad look sensitivity consistent across Skyrim camera states.
 
-The plugin also restores full-rate first-person horizontal look while actively sprinting. It only corrects Skyrim's measured half-rate sprint frames, leaving normal look and full-rate sprint transitions unchanged.
+The plugin also restores full-rate first-person horizontal look while actively sprinting or aiming a bow, including Eagle Eye zoom. It only corrects Skyrim's measured half-rate yaw frames, leaving normal look and full-rate transitions unchanged.
 
 ## Install
 

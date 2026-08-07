@@ -7,7 +7,8 @@ Project: **Concise Mouse Consistency (CMC)**.
 - Run dependency-free checks with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 - Run the same tests against the full dependency graph with `ctest --preset plugin-release`.
 - Confirm tests cover transforms, runtime gates, live compatibility-policy changes, INI parsing/clamping/save/reload, case-insensitive DLL detection, and serialized config callbacks.
-- Confirm sprint-yaw tests cover the `0.48..0.52` correction window, both yaw directions, boundary values, nearby non-matching scales, disabled eligibility, zero input, and zero frame delta.
+- Confirm half-rate yaw tests cover the `0.48..0.52` correction window, both yaw directions, boundary values, nearby non-matching scales, sprint and bow eligibility, disabled eligibility, zero input, and zero frame delta.
+- Confirm bow Y tests preserve Skyrim's current engine delta before applying the configured bow and mouse Y multipliers.
 - Confirm sampled-log tests cover disabled logging, zero counts/intervals, first-correction emission, and before/exact/after interval boundaries.
 
 ## 1) Startup
@@ -23,6 +24,8 @@ Validate in first-person and third-person:
 - X and Y feel consistent at parity defaults
 - horizontal sensitivity remains matched while actively sprinting in first person
 - entering and leaving sprint does not produce a doubled transition frame
+- horizontal and vertical sensitivity remain matched while drawing a bow and during Eagle Eye zoom
+- entering and leaving bow aim does not produce a doubled transition frame
 - behavior is stable after save + reload from UI
 
 ## 3) Smoothing checks

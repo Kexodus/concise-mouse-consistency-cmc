@@ -6,6 +6,11 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Final first-person bow yaw correction and live Y delta (2026-08-07)
+Bow draw and Eagle Eye use the same final-stage `0.5` yaw scale previously confirmed during sprinting. Extending the guarded `PlayerCharacter::ModifyMovementData` correction to relocated bow attack states restored full horizontal sensitivity only when the observed scale was within `0.48..0.52`.
+
+The bow Y path now preserves Skyrim's current engine delta instead of rebuilding it from the cached normal-play pixel scale. A forced `fBowAimMouseYMultiplier=0.1` playtest made Y dramatically slower, proving the configured Y multiplier reaches the camera. With both bow multipliers returned to `1.0`, the user confirmed normal bow draw and Eagle Eye felt correct. Runtime logs recorded 2,040 corrected bow frames; all sampled entries had `bowAiming=1`, `sprinting=0`, and restored yaw equal to twice the measured half-rate yaw within `0.000001` radians.
+
 ### Final first-person sprint yaw correction (2026-08-07)
 `MovementHandlerAgentPlayerControls` computes final yaw as `postSensitivityX * deltaSeconds * pi * movementScale`. During active first-person sprinting, `movementScale` is exactly `0.5`; `PlayerCharacter::ModifyMovementData` otherwise passes that value through. Correcting at the `ModifyMovementData` vtable hook restores full yaw without changing normal input transforms.
 
@@ -25,13 +30,15 @@ No judder, no conflict. IC's MinHook on `NiCamera` and `PlayerCamera` does not i
 Alt-tab out, wait >350ms, alt-tab back — first event zeroed (`camera=FocusSpikeSuppressed`), next event resumes normally. Single-frame suppression is sufficient; no visible camera jerk observed. Tested on 1.6.1170.0 with IC + SmoothCam active.
 
 ### EMA sampled scale converges correctly (2026-04-04)
-`sampledScaleX` → 1.0, `sampledScaleY` → -1.0. The -1.0 on Y is correct — the engine inverts Y axis (positive raw pixel → negative `lookInputVec.y`). The scale encodes both magnitude and sign, so bow aim reconstruction via `rawPixelY * g_sampledScaleY * bowY` produces the correct sign convention.
+`sampledScaleX` → 1.0, `sampledScaleY` → -1.0. The -1.0 on Y is correct — the engine inverts Y axis (positive raw pixel → negative `lookInputVec.y`). CMC still uses the sampled X scale to reconstruct the normal horizontal baseline during bow aim. The original sampled-Y reconstruction was later removed because it could become stale and bypass live sensitivity changes; bow Y now preserves the current engine delta.
 
 ### Relocated ActorState access for AE 1.6.629+ (2026-04-04)
 Using `REL::RelocateMemberIfNewer` to read `ActorState1` (SE offset 0xC0, AE offset 0xC8) and `ActorState2` (SE 0xC4, AE 0xCC) directly from the `PlayerCharacter` pointer fixes bow detection on AE runtimes. Confirmed working on 1.6.1170.0: `atkState` cycles through real values (8=kBowDraw, 9=kBowAttached, 10=kBowDrawn, 12=kBowReleased), `wpnDrawn` toggles correctly, `bowDiag` fires on every frame during aim. This is the correct pattern for any `ActorState` field access in a multi-runtime NG build.
 
-### Engine applies 1:1 pixel-to-lookInputVec ratio on both axes during bow aim (2026-04-04)
+### Engine input-stage deltas are 1:1 during bow aim (2026-04-04)
 Added diagnostic logging of raw OS pixels (`rawPx`), engine output (`engine`), and bow multipliers (`bowMul`). Result: `|rawPx.X| == |engine.X|` and `|rawPx.Y| == |engine.Y|` on every frame — engine only inverts Y sign, no per-axis attenuation. This is identical between freelook and bow aim. If Y feels more sensitive during bow aim, it's FOV asymmetry (vertical FOV narrower than horizontal), not engine scaling. Use `fBowAimMouseYMultiplier < 1.0` to compensate.
+
+This finding describes the input hook only. Skyrim later applies a separate `0.5` horizontal scale at final player rotation during bow aim; CMC corrects that downstream stage without reconstructing Y.
 
 ### IC does not hook weapon/actor state queries (2026-04-04, verified via source)
 Reviewed [ImprovedCameraSE-NG](https://github.com/ArranzCNL/ImprovedCameraSE-NG). IC does NOT hook or intercept:
