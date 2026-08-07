@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MouseSensitivityFix
-    VERSION 0.1.0
+    VERSION 0.1.1
     LANGUAGES CXX
 )
 
@@ -75,6 +75,9 @@ if(MSF_BUILD_PLUGIN)
     install(FILES dist/README.md
         DESTINATION .
         RENAME README.md
+    )
+    install(FILES CHANGELOG.md
+        DESTINATION .
     )
 
     set(CPACK_GENERATOR "ZIP")
