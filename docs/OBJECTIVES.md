@@ -7,6 +7,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 Ship a DLL-only SKSE plugin that:
 
 - keeps X/Y look response consistent
+- preserves horizontal look sensitivity during active first-person sprinting
 - removes plugin-side smoothing behavior
 - supports in-game config without an ESP
 

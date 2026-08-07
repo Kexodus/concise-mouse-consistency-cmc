@@ -12,6 +12,7 @@ CMC has four parts:
 2. **Hooks**
    - permanently installed mouse/gamepad look interception
    - sensitivity transform and smoothing-related handling
+   - selective first-person sprint yaw restoration at final player rotation
 3. **Config**
    - INI source of truth
    - throttled live reload, clamped values, and serialized change notifications
@@ -40,6 +41,8 @@ Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` 
 
 This keeps live enable/disable and compatibility override changes safe. Vtables are never patched from inside an input callback, and a partial installation is rolled back before initialization fails.
 
+`PlayerCharacter::ModifyMovementData` receives Skyrim's final first-person yaw delta. During active sprint frames, Skyrim can apply an exact `0.5` movement scale after normal mouse sensitivity processing. CMC restores the expected `lookX * deltaSeconds * pi` result only when the observed scale is within `0.48..0.52`. Full-rate transition frames, third-person look, disabled states, and zero-input frames pass through unchanged.
+
 ## Config model
 
 INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
@@ -59,6 +62,8 @@ Current compatibility policy is intentionally narrow:
 - keeps core sensitivity transform active
 
 Compatibility and hook toggles apply immediately. Settings change behavior through atomic gates; they do not mutate hook registrations at runtime.
+
+Verbose logging is off in the release INI. When enabled, it emits low-frequency hook counters and sprint-correction samples, not per-frame camera, matrix, or movement dumps.
 
 ## Known risks
 

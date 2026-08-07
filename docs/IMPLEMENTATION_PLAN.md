@@ -11,6 +11,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 2. **Input behavior**
    - [x] mouse/gamepad look hooks
    - [x] sensitivity transform
+   - [x] selective first-person sprint yaw restoration
    - [x] smoothing-related handling
 3. **UI + runtime sync**
    - [x] SKSE Menu Framework panel
@@ -30,6 +31,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 - [x] No ESP/ESL/ESM required for core functionality
 - [ ] DLL loads via SKSE across targeted runtimes
 - [x] X/Y transform math covered by automated tests
+- [x] First-person sprint yaw restoration verified on Steam `1.6.1170`
 - [x] Third-person smoothing removal verified on Steam `1.6.1170`
 - [x] SKSE Menu Framework entry verified on Steam `1.6.1170`
 - [x] Save/reload behavior covered by automated tests
