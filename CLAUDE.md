@@ -21,19 +21,17 @@ cmake --build --preset plugin-release --target package
 
 Output: `build-commonlib/Release/MouseSensitivityFix.dll`
 
-**Deploy for testing:** After every successful build, automatically copy both files to the MO2 mod folder:
+**Deploy for testing:** After every successful build, replace the DLL in the MO2 mod folder. Seed the INI only when the test install does not already have one, so local settings survive rebuilds:
 
 ```bash
 DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC)/SKSE/Plugins"
 
 cp "build-commonlib/Release/MouseSensitivityFix.dll" "$DEPLOY/"
-cp "dist/Data/SKSE/Plugins/MouseSensitivityFix.ini"  "$DEPLOY/"
+[ -f "$DEPLOY/MouseSensitivityFix.ini" ] || cp "dist/Data/SKSE/Plugins/MouseSensitivityFix.ini" "$DEPLOY/"
 
-# Enable debug settings in the deployed INI for playtesting
-sed -i 's/bVerboseLogging=false/bVerboseLogging=true/' "$DEPLOY/MouseSensitivityFix.ini"
 ```
 
-The source `dist/` INI always keeps `bVerboseLogging=false` (release default). Only the deployed copy gets it flipped to `true`. Check `MouseSensitivityFix.log` after launch for clean startup.
+The source `dist/` INI and normal deployed copy keep `bVerboseLogging=false`. Turn it on temporarily only when sampled hook counters are needed, then turn it off before packaging or normal play. Check `MouseSensitivityFix.log` after launch for clean startup.
 
 Dependency-free tests run with the `unit-tests` configure/build/test presets. CI runs those tests on Windows and Linux, then performs a full Windows plugin build, test, package, and artifact upload. In-game validation remains manual per `docs/TEST_PLAN.md` and is recorded in `docs/RUNTIME_VALIDATION.md`.
 
@@ -54,6 +52,7 @@ All hooks use `REL::Relocation` (CommonLibSSE-NG) to patch vtables — no hardco
 |---|---|---|
 | `LookHandler::ProcessThumbstick` | +2 | Gamepad right-stick look |
 | `LookHandler::ProcessMouseMove` | +3 | Mouse look |
+| `PlayerCharacter::ModifyMovementData` | +0x11A | Selective first-person sprint yaw restoration |
 | `ThirdPersonState::HandleLookInput` | +0x0F | Smoothing removal |
 
 Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call.

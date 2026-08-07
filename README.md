@@ -9,6 +9,7 @@ It keeps mouse and gamepad look sensitivity consistent across camera states and 
 - Global sensitivity scaling
 - Independent mouse and gamepad X/Y scaling
 - First-person, third-person, and bow/crossbow aim controls
+- Selective first-person sprint yaw correction that preserves normal and transition frames
 - Optional gamepad look support with right-stick filtering
 - Alt-tab focus-spike suppression
 - Live INI reload and runtime-safe enable/disable behavior
@@ -40,6 +41,7 @@ Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md
 - INI: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 - UI path: `Concise Mouse Consistency/Settings`
 - UI and external INI edits apply without reinstalling hooks or restarting Skyrim
+- Release logging is quiet by default. Set `bVerboseLogging=true` only when collecting sampled hook counters.
 
 ## Validation targets
 
