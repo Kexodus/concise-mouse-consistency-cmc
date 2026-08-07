@@ -9,7 +9,7 @@ It keeps mouse and gamepad look sensitivity consistent across camera states and 
 - Global sensitivity scaling
 - Independent mouse and gamepad X/Y scaling
 - First-person, third-person, and bow/crossbow aim controls
-- Selective first-person sprint yaw correction that preserves normal and transition frames
+- Selective first-person half-rate yaw correction for sprinting and bow aim that preserves normal and transition frames
 - Optional gamepad look support with right-stick filtering
 - Alt-tab focus-spike suppression
 - Live INI reload and runtime-safe enable/disable behavior

@@ -32,7 +32,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.1.0.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-<version>.zip`
 
 The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies.
 
@@ -55,4 +55,4 @@ ctest --preset unit-tests
 3. Check `MouseSensitivityFix.log` for clean startup and all expected hook-install messages.
 4. Follow `docs/TEST_PLAN.md` and record evidence in `docs/RUNTIME_VALIDATION.md`.
 
-The startup log reports four installed behaviors: the combined mouse/gamepad look hooks, first-person sprint-yaw correction, third-person smoothing, and the optional UI bridge. Normal release installs keep `bVerboseLogging=false`. Enable it temporarily only when sampled hook counters are needed.
+The startup log reports four installed behaviors: the combined mouse/gamepad look hooks, first-person half-rate yaw correction, third-person smoothing, and the optional UI bridge. Normal release installs keep `bVerboseLogging=false`. Enable it temporarily only when sampled hook counters are needed.
