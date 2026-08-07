@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <numbers>
 #include <string>
+#include <tuple>
 
 #if MSF_USE_COMMONLIBSSE
 #include <RE/A/Actor.h>
@@ -96,7 +97,7 @@ namespace msf
         constexpr std::uint64_t kLookLogInterval = 600;
         constexpr std::uint64_t kThirdPersonLogInterval = 600;
         constexpr std::uint64_t kStickLogInterval = 600;
-        constexpr std::uint64_t kSprintYawLogInterval = 120;
+        constexpr std::uint64_t kHalfRateYawLogInterval = 120;
 
         // Sampled scale: ratio of lookInputVec units per raw mouse pixel at baseline sensitivity.
         // Updated via EMA during normal play only (not during bow aim) to stay uncontaminated.
@@ -162,29 +163,34 @@ namespace msf
             auto* camera = RE::PlayerCamera::GetSingleton();
             const auto config = ConfigManager::Get().GetSnapshot();
             const bool sprinting = IsSprintingRelocated(player);
+            const bool bowAiming = DetectBowAim(player);
             const bool inThirdPerson = camera && camera->IsInThirdPerson();
             const RE::NiPoint2 lookInput = controls ? controls->data.lookInputVec : RE::NiPoint2{};
             const float engineYawDelta = rotationData.z;
-            rotationData.z = RestoreHalfRateSprintYawDelta(
+            rotationData.z = RestoreHalfRateYawDelta(
                 lookInput.x,
                 delta,
                 rotationData.z,
-                config.enabled &&
-                    !config.hotDisable &&
-                    config.enableFirstPersonHook &&
-                    !inThirdPerson &&
-                    sprinting);
+                ShouldRestoreHalfRateFirstPersonYaw(
+                    config.enabled,
+                    config.hotDisable,
+                    config.enableFirstPersonHook,
+                    inThirdPerson,
+                    sprinting,
+                    bowAiming));
             const bool yawCorrected = rotationData.z != engineYawDelta;
             if (yawCorrected) {
                 ++g_playerYawCorrectionCount;
                 if (ShouldEmitSampledLog(
                         config.verboseLogging,
                         g_playerYawCorrectionCount,
-                        kSprintYawLogInterval,
+                        kHalfRateYawLogInterval,
                         true)) {
                     LogInfo(
-                        "HookCounter[FirstPersonSprintYaw]"
+                        "HookCounter[FirstPersonHalfRateYaw]"
                         " corrected=" + std::to_string(g_playerYawCorrectionCount) +
+                        " sprinting=" + std::to_string(sprinting) +
+                        " bowAiming=" + std::to_string(bowAiming) +
                         " engineYaw=" + std::to_string(engineYawDelta) +
                         " restoredYaw=" + std::to_string(rotationData.z) +
                         " lookX=" + std::to_string(lookInput.x) +
@@ -301,20 +307,21 @@ namespace msf
                 g_lastCameraState = inThirdPerson ? "ThirdPerson_BowAim" : "FirstPerson_BowAim";
                 const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
                 const float bowY = static_cast<float>(reloadedConfig.bowAimMouseYMultiplier);
-                // Reconstruct the normal-sensitivity delta from raw pixels and the sampled
-                // scale, then apply bowX/Y relative to that baseline.
-                // bowX/Y = 1.0 produces exactly the same feel as normal first-person look.
-                // Falls back to the engine-attenuated delta if the scale is not yet seeded.
-                if (g_sampledScaleX != 0.0f && std::abs(rawPixelX) >= 1.0f) {
-                    deltaX = rawPixelX * g_sampledScaleX * bowX;
-                } else {
-                    deltaX *= bowX;
-                }
-                if (g_sampledScaleY != 0.0f && std::abs(rawPixelY) >= 1.0f) {
-                    deltaY = rawPixelY * g_sampledScaleY * bowY;
-                } else {
-                    deltaY *= bowY;
-                }
+                // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
+                // scale, then apply bowX relative to that baseline. Falls back to the
+                // engine delta if the scale is not yet seeded.
+                // Keep the engine's current Y delta. Eagle Eye changes the zoom/FOV
+                // response, and rebuilding from the cached normal-play pixel scale
+                // makes bow Y stale and ignores live game sensitivity changes.
+                // Apply the configurable bow adjustment here, then ApplyTransform
+                // applies the current global and mouse Y settings exactly once.
+                std::tie(deltaX, deltaY) = ApplyBowAimMouseDeltas(
+                    rawPixelX,
+                    deltaX,
+                    deltaY,
+                    g_sampledScaleX,
+                    bowX,
+                    bowY);
             }
 
             const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
@@ -442,7 +449,7 @@ namespace msf
     }
 #endif
 
-    float RestoreHalfRateSprintYawDelta(
+    float RestoreHalfRateYawDelta(
         float postSensitivityLookX,
         float deltaSeconds,
         float engineYawDelta,
@@ -466,6 +473,35 @@ namespace msf
         }
 
         return engineYawDelta;
+    }
+
+    std::pair<float, float> ApplyBowAimMouseDeltas(
+        float rawPixelX,
+        float engineDeltaX,
+        float engineDeltaY,
+        float sampledScaleX,
+        float bowXMultiplier,
+        float bowYMultiplier) noexcept
+    {
+        const float outputX = sampledScaleX != 0.0F && std::abs(rawPixelX) >= 1.0F
+            ? rawPixelX * sampledScaleX * bowXMultiplier
+            : engineDeltaX * bowXMultiplier;
+        return { outputX, engineDeltaY * bowYMultiplier };
+    }
+
+    bool ShouldRestoreHalfRateFirstPersonYaw(
+        bool enabled,
+        bool hotDisabled,
+        bool firstPersonHookEnabled,
+        bool inThirdPerson,
+        bool sprinting,
+        bool bowAiming) noexcept
+    {
+        return enabled &&
+               !hotDisabled &&
+               firstPersonHookEnabled &&
+               !inThirdPerson &&
+               (sprinting || bowAiming);
     }
 
     bool ShouldEmitSampledLog(
@@ -537,7 +573,7 @@ namespace msf
 #endif
     }
 
-    bool HookCoordinator::InstallPlayerSprintYawHook()
+    bool HookCoordinator::InstallPlayerYawHook()
     {
 #if MSF_USE_COMMONLIBSSE
         if (g_originalPlayerModifyMovementData) {
@@ -548,20 +584,20 @@ namespace msf
         g_originalPlayerModifyMovementData = reinterpret_cast<PlayerModifyMovementDataFn>(
             playerCharacterVTable.write_vfunc(0x11A, PlayerModifyMovementDataHook));
         if (!g_originalPlayerModifyMovementData) {
-            LogError("Failed to install PlayerCharacter::ModifyMovementData sprint-yaw hook.");
+            LogError("Failed to install PlayerCharacter::ModifyMovementData half-rate yaw hook.");
             return false;
         }
 
         g_playerYawCorrectionCount = 0;
-        LogInfo("Installed PlayerCharacter::ModifyMovementData first-person sprint-yaw correction hook.");
+        LogInfo("Installed PlayerCharacter::ModifyMovementData first-person half-rate yaw correction hook.");
         return true;
 #else
-        LogWarn("CommonLibSSE disabled; cannot install first-person sprint-yaw correction hook.");
+        LogWarn("CommonLibSSE disabled; cannot install first-person half-rate yaw correction hook.");
         return false;
 #endif
     }
 
-    void HookCoordinator::RemovePlayerSprintYawHook()
+    void HookCoordinator::RemovePlayerYawHook()
     {
 #if MSF_USE_COMMONLIBSSE
         if (!g_originalPlayerModifyMovementData) {
@@ -573,7 +609,7 @@ namespace msf
             0x11A,
             reinterpret_cast<std::uintptr_t>(g_originalPlayerModifyMovementData));
         g_originalPlayerModifyMovementData = nullptr;
-        LogInfo("Removed PlayerCharacter::ModifyMovementData first-person sprint-yaw correction hook.");
+        LogInfo("Removed PlayerCharacter::ModifyMovementData first-person half-rate yaw correction hook.");
 #endif
     }
 
@@ -636,7 +672,7 @@ namespace msf
         }
 
         _firstPersonRegistered = false;
-        _playerSprintYawRegistered = false;
+        _playerYawRegistered = false;
         _smoothingRemovalRegistered = false;
 #if MSF_USE_COMMONLIBSSE
         g_activeCoordinator = this;
@@ -649,8 +685,8 @@ namespace msf
             return false;
         }
 
-        _playerSprintYawRegistered = InstallPlayerSprintYawHook();
-        if (!_playerSprintYawRegistered) {
+        _playerYawRegistered = InstallPlayerYawHook();
+        if (!_playerYawRegistered) {
             RemoveLookHandlerMouseMoveHook();
             _firstPersonRegistered = false;
 #if MSF_USE_COMMONLIBSSE
@@ -660,8 +696,8 @@ namespace msf
         }
 
         if (!RegisterHookPoint(HookRegistrationPoint::SmoothingRemoval)) {
-            RemovePlayerSprintYawHook();
-            _playerSprintYawRegistered = false;
+            RemovePlayerYawHook();
+            _playerYawRegistered = false;
             RemoveLookHandlerMouseMoveHook();
             _firstPersonRegistered = false;
 #if MSF_USE_COMMONLIBSSE
@@ -677,11 +713,11 @@ namespace msf
 
     void HookCoordinator::Remove()
     {
-        RemovePlayerSprintYawHook();
+        RemovePlayerYawHook();
         RemoveLookHandlerMouseMoveHook();
         RemoveThirdPersonSmoothingHook();
         _firstPersonRegistered = false;
-        _playerSprintYawRegistered = false;
+        _playerYawRegistered = false;
         _smoothingRemovalRegistered = false;
         _installed = false;
 #if MSF_USE_COMMONLIBSSE
