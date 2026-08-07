@@ -5,10 +5,7 @@
 
 #include <Windows.h>
 
-#include <algorithm>
-#include <array>
 #include <filesystem>
-#include <string>
 
 namespace msf
 {
@@ -48,7 +45,6 @@ namespace msf
         bool g_registered{ false };
         bool g_lastSaveSucceeded{ false };
         bool g_lastSaveAttempted{ false };
-        ConfigValues g_uiValues{};
 
         const char* kMenuPath = "Concise Mouse Consistency/Settings";
         const auto kConfigPath = std::filesystem::path("Data/SKSE/Plugins/MouseSensitivityFix.ini");
@@ -87,76 +83,65 @@ namespace msf
             auto values = ConfigManager::Get().GetSnapshot();
             bool changed = false;
 
-            // ── Core ─────────────────────────────────────────────────────────
-            UiSeparatorText("Core");
+            // Keep these groups aligned with the INI sections. Verbose logging
+            // is intentionally omitted from the menu because it is diagnostic-only.
+            UiSeparatorText("General");
             changed |= g_api.Checkbox("Enabled", &values.enabled);
             changed |= g_api.Checkbox("Hot disable (bypass all plugin behavior)", &values.hotDisable);
-
-
             float globalSens = static_cast<float>(values.globalSensitivity);
             if (g_api.SliderFloat("Global sensitivity", &globalSens, 0.01F, 20.0F, "%.2f", 0)) {
                 values.globalSensitivity = static_cast<double>(globalSens);
                 changed = true;
             }
-
-            // ── Mouse ─────────────────────────────────────────────────────────
-            UiSeparatorText("Mouse");
-            float mouseX = static_cast<float>(values.mouseXAxisMultiplier);
-            float mouseY = static_cast<float>(values.mouseYAxisMultiplier);
-            if (g_api.SliderFloat("X axis multiplier##mouse", &mouseX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.mouseXAxisMultiplier = static_cast<double>(mouseX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Y axis multiplier##mouse", &mouseY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.mouseYAxisMultiplier = static_cast<double>(mouseY);
-                changed = true;
-            }
-
-            // ── Gamepad ───────────────────────────────────────────────────────
-            UiSeparatorText("Gamepad");
-            changed |= g_api.Checkbox("Apply to gamepad look", &values.affectGamepadLook);
-            float gamepadX = static_cast<float>(values.gamepadXAxisMultiplier);
-            float gamepadY = static_cast<float>(values.gamepadYAxisMultiplier);
-            if (g_api.SliderFloat("X axis multiplier##gamepad", &gamepadX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.gamepadXAxisMultiplier = static_cast<double>(gamepadX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Y axis multiplier##gamepad", &gamepadY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.gamepadYAxisMultiplier = static_cast<double>(gamepadY);
-                changed = true;
-            }
-
-            // ── Bow / Crossbow Aim ────────────────────────────────────────────
-            UiSeparatorText("Bow / Crossbow Aim");
-            float bowMouseX   = static_cast<float>(values.bowAimMouseXMultiplier);
-            float bowMouseY   = static_cast<float>(values.bowAimMouseYMultiplier);
-            float bowGamepadX = static_cast<float>(values.bowAimGamepadXMultiplier);
-            float bowGamepadY = static_cast<float>(values.bowAimGamepadYMultiplier);
-            if (g_api.SliderFloat("Mouse X multiplier##bow", &bowMouseX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimMouseXMultiplier = static_cast<double>(bowMouseX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Mouse Y multiplier##bow", &bowMouseY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimMouseYMultiplier = static_cast<double>(bowMouseY);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Gamepad X multiplier##bow", &bowGamepadX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimGamepadXMultiplier = static_cast<double>(bowGamepadX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Gamepad Y multiplier##bow", &bowGamepadY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimGamepadYMultiplier = static_cast<double>(bowGamepadY);
-                changed = true;
-            }
-
-            // ── Hooks ─────────────────────────────────────────────────────────
-            UiSeparatorText("Hooks");
             changed |= g_api.Checkbox("Apply in first person", &values.enableFirstPersonHook);
             changed |= g_api.Checkbox("Apply in third person", &values.enableThirdPersonHook);
             changed |= g_api.Checkbox("Remove third-person smoothing", &values.enableSmoothingRemovalHook);
             changed |= g_api.Checkbox("Disable in menus", &values.disableInMenus);
             changed |= g_api.Checkbox("Disable when look controls disabled", &values.disableWhenLookControlsDisabled);
+            changed |= g_api.Checkbox("Apply to gamepad look", &values.affectGamepadLook);
             changed |= g_api.Checkbox("Suppress focus spike (alt-tab)", &values.suppressFocusSpike);
+
+            UiSeparatorText("Advanced");
+            float mouseX = static_cast<float>(values.mouseXAxisMultiplier);
+            float mouseY = static_cast<float>(values.mouseYAxisMultiplier);
+            float gamepadX = static_cast<float>(values.gamepadXAxisMultiplier);
+            float gamepadY = static_cast<float>(values.gamepadYAxisMultiplier);
+            if (g_api.SliderFloat("Mouse X multiplier", &mouseX, 0.01F, 20.0F, "%.2f", 0)) {
+                values.mouseXAxisMultiplier = static_cast<double>(mouseX);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Mouse Y multiplier", &mouseY, 0.01F, 20.0F, "%.2f", 0)) {
+                values.mouseYAxisMultiplier = static_cast<double>(mouseY);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Gamepad X multiplier", &gamepadX, 0.01F, 20.0F, "%.2f", 0)) {
+                values.gamepadXAxisMultiplier = static_cast<double>(gamepadX);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Gamepad Y multiplier", &gamepadY, 0.01F, 20.0F, "%.2f", 0)) {
+                values.gamepadYAxisMultiplier = static_cast<double>(gamepadY);
+                changed = true;
+            }
+            float bowMouseX = static_cast<float>(values.bowAimMouseXMultiplier);
+            float bowMouseY = static_cast<float>(values.bowAimMouseYMultiplier);
+            float bowGamepadX = static_cast<float>(values.bowAimGamepadXMultiplier);
+            float bowGamepadY = static_cast<float>(values.bowAimGamepadYMultiplier);
+            if (g_api.SliderFloat("Bow mouse X multiplier", &bowMouseX, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimMouseXMultiplier = static_cast<double>(bowMouseX);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Bow mouse Y multiplier", &bowMouseY, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimMouseYMultiplier = static_cast<double>(bowMouseY);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Bow gamepad X multiplier", &bowGamepadX, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimGamepadXMultiplier = static_cast<double>(bowGamepadX);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Bow gamepad Y multiplier", &bowGamepadY, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimGamepadYMultiplier = static_cast<double>(bowGamepadY);
+                changed = true;
+            }
             if (g_api.SliderInt("Focus spike gap (ms)", &values.focusSpikeGapMs, 50, 5000, "%d", 0)) {
                 changed = true;
             }
@@ -187,7 +172,6 @@ namespace msf
             }
             if (g_api.Button("Reload from INI", ImVec2{ 0.0F, 0.0F })) {
                 const bool loaded = ConfigManager::Get().LoadFromIni(kConfigPath);
-                g_uiValues = ConfigManager::Get().GetSnapshot();
                 g_lastSaveAttempted = true;
                 g_lastSaveSucceeded = loaded;
                 LogInfo(loaded ? "UI: reloaded configuration from INI." : "UI: failed to reload configuration from INI.");
@@ -244,7 +228,6 @@ namespace msf
             return true;
         }
 
-        g_uiValues = ConfigManager::Get().GetSnapshot();
         g_api.AddSectionItem(kMenuPath, RenderSettingsPage);
         g_registered = true;
         LogInfo("UI Bridge initialized: registered SKSE Menu Framework settings page.");
@@ -260,10 +243,4 @@ namespace msf
         }
     }
 
-    void MenuFrameworkBridge::OnSettingsApplied(const ConfigValues& updatedValues)
-    {
-        g_uiValues = updatedValues;
-        ConfigManager::Get().ApplyUiUpdate(updatedValues);
-        LogInfo("UI settings applied in memory.");
-    }
 }
