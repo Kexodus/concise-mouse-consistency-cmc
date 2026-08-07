@@ -90,7 +90,7 @@ namespace msf
             // ── Core ─────────────────────────────────────────────────────────
             UiSeparatorText("Core");
             changed |= g_api.Checkbox("Enabled", &values.enabled);
-            changed |= g_api.Checkbox("Hot disable (bypass all transforms)", &values.hotDisable);
+            changed |= g_api.Checkbox("Hot disable (bypass all plugin behavior)", &values.hotDisable);
 
 
             float globalSens = static_cast<float>(values.globalSensitivity);
@@ -157,14 +157,17 @@ namespace msf
             changed |= g_api.Checkbox("Disable in menus", &values.disableInMenus);
             changed |= g_api.Checkbox("Disable when look controls disabled", &values.disableWhenLookControlsDisabled);
             changed |= g_api.Checkbox("Suppress focus spike (alt-tab)", &values.suppressFocusSpike);
+            if (g_api.SliderInt("Focus spike gap (ms)", &values.focusSpikeGapMs, 50, 5000, "%d", 0)) {
+                changed = true;
+            }
 
             // ── Compatibility ─────────────────────────────────────────────────
             UiSeparatorText("Compatibility");
             changed |= g_api.Checkbox("Use compatibility presets", &values.useCompatibilityPresets);
             changed |= g_api.Checkbox("Preset: Improved Camera", &values.presetImprovedCamera);
             changed |= g_api.Checkbox("Preset: SmoothCam", &values.presetSmoothCam);
-            changed |= g_api.Checkbox("Delegate 3rd person to SmoothCam", &values.delegateThirdPersonWhenSmoothCam);
-            changed |= g_api.Checkbox("Delegate 3rd person to Improved Camera", &values.delegateThirdPersonWhenImprovedCamera);
+            changed |= g_api.Checkbox("Delegate 3rd-person smoothing to SmoothCam", &values.delegateThirdPersonWhenSmoothCam);
+            changed |= g_api.Checkbox("Delegate 3rd-person smoothing to Improved Camera", &values.delegateThirdPersonWhenImprovedCamera);
             changed |= g_api.Checkbox("Force override SmoothCam", &values.forceOverrideSmoothCam);
             changed |= g_api.Checkbox("Force override Improved Camera", &values.forceOverrideImprovedCamera);
 

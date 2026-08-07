@@ -3,12 +3,17 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <string>
 
 #if MSF_USE_COMMONLIBSSE
+#include <RE/A/AIProcess.h>
 #include <RE/A/Actor.h>
 #include <RE/C/ControlMap.h>
+#include <RE/H/HighProcessData.h>
+#include <RE/I/INISettingCollection.h>
 #include <RE/T/TESObjectWEAP.h>
 #include <RE/L/LookHandler.h>
 #include <RE/M/MouseMoveEvent.h>
@@ -16,7 +21,9 @@
 #include <RE/Offsets_VTABLE.h>
 #include <RE/P/PlayerCamera.h>
 #include <RE/P/PlayerCharacter.h>
+#include <RE/P/PlayerControls.h>
 #include <RE/P/PlayerControlsData.h>
+#include <RE/S/SprintHandler.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
 #include <RE/U/UI.h>
@@ -26,11 +33,20 @@
 
 namespace msf
 {
+    namespace
+    {
+        constexpr std::uint8_t kInputTransformsAllowed = 1U << 0U;
+        constexpr std::uint8_t kSmoothingRemovalAllowed = 1U << 1U;
+        constexpr std::uint8_t kThirdPersonSmoothingAllowed = 1U << 2U;
+    }
+
 #if MSF_USE_COMMONLIBSSE
     namespace
     {
         using ProcessThumbstickFn = void (*)(RE::LookHandler*, RE::ThumbstickEvent*, RE::PlayerControlsData*);
         using ProcessMouseMoveFn = void (*)(RE::LookHandler*, RE::MouseMoveEvent*, RE::PlayerControlsData*);
+        using PlayerModifyMovementDataFn = void (*)(
+            RE::PlayerCharacter*, float, RE::NiPoint3&, RE::NiPoint3&);
         using ThirdPersonHandleLookInputFn = void (*)(RE::ThirdPersonState*, const RE::NiPoint2&);
 
         // ActorState is a base class of Actor at compile-time offset 0xB8 (SE layout).
@@ -60,12 +76,23 @@ namespace msf
             }
         }
 
+        bool IsSprintingRelocated(const RE::PlayerCharacter* player) noexcept
+        {
+            if (!player) {
+                return false;
+            }
+            const auto& as1 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState1>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC0, 0xC8);
+            return static_cast<bool>(as1.sprinting);
+        }
+
         ProcessThumbstickFn g_originalProcessThumbstick{ nullptr };
         ProcessMouseMoveFn g_originalProcessMouseMove{ nullptr };
+        PlayerModifyMovementDataFn g_originalPlayerModifyMovementData{ nullptr };
         ThirdPersonHandleLookInputFn g_originalThirdPersonHandleLookInput{ nullptr };
         HookCoordinator* g_activeCoordinator{ nullptr };
-        bool g_allowThirdPersonIntervention{ true };
         bool g_mouseHookFiredOnce{ false };
+        bool g_runtimeControlSettingsLogged{ false };
         bool g_thumbstickHookFiredOnce{ false };
 
         std::uint64_t g_lookHookCallsTotal{ 0 };
@@ -98,6 +125,41 @@ namespace msf
         std::uint64_t g_thirdPersonSmoothingAppliedCount{ 0 };
         std::chrono::steady_clock::time_point g_lastMouseEventTime{};
 
+        struct RuntimeLookState
+        {
+            bool valid{ false };
+            bool sprinting{ false };
+            bool movingForward{ false };
+            bool movingBack{ false };
+            bool movingLeft{ false };
+            bool movingRight{ false };
+            bool running{ false };
+            bool controlsRunning{ false };
+            bool sprintHandlerPresent{ false };
+            bool sprintHeldActive{ false };
+            bool sprintTriggerRelease{ false };
+            RE::NiPoint2 moveInput{};
+            RE::NiPoint2 previousMoveInput{};
+            RE::NiPoint2 previousLookInput{};
+            bool hasCameraRoot{ false };
+            bool cameraEulerValid{ false };
+            float playerPitch{ 0.0F };
+            float playerYaw{ 0.0F };
+            float cameraYaw{ 0.0F };
+            float rotationInputX{ 0.0F };
+            float rotationInputY{ 0.0F };
+            RE::NiPoint3 cameraRootEuler{};
+            float cameraMatrix[3][3]{};
+        };
+
+        RuntimeLookTelemetryAccumulator g_runtimeLookInput;
+        std::uint64_t g_runtimeLookEventCount{ 0 };
+        std::uint64_t g_playerMovementTraceCount{ 0 };
+        std::uint64_t g_playerYawCorrectionCount{ 0 };
+        bool g_hasPreviousRuntimeLookState{ false };
+        RuntimeLookState g_previousRuntimeLookState{};
+        std::chrono::steady_clock::time_point g_previousRuntimeLookEventTime{};
+
         constexpr std::uint64_t kLookLogInterval = 30;
         constexpr std::uint64_t kThirdPersonLogInterval = 180;
         constexpr std::uint64_t kStickLogInterval = 30;
@@ -107,6 +169,42 @@ namespace msf
         float g_sampledScaleX{ 0.0f };
         float g_sampledScaleY{ 0.0f };
         constexpr float kScaleEmaAlpha = 0.15f;
+
+        void LogRuntimeControlSettingsOnce()
+        {
+            if (g_runtimeControlSettingsLogged) {
+                return;
+            }
+            g_runtimeControlSettingsLogged = true;
+
+            auto* settings = RE::INISettingCollection::GetSingleton();
+            if (!settings) {
+                LogWarn("RuntimeControlSettings unavailable: INISettingCollection singleton is null.");
+                return;
+            }
+
+            const auto logBool = [settings](std::string_view name) {
+                if (const auto* setting = settings->GetSetting(name)) {
+                    LogInfo("RuntimeControlSetting " + std::string(name) + "=" +
+                        std::to_string(setting->GetBool()));
+                } else {
+                    LogWarn("RuntimeControlSetting missing: " + std::string(name));
+                }
+            };
+            const auto logFloat = [settings](std::string_view name) {
+                if (const auto* setting = settings->GetSetting(name)) {
+                    LogInfo("RuntimeControlSetting " + std::string(name) + "=" +
+                        std::to_string(setting->GetFloat()));
+                } else {
+                    LogWarn("RuntimeControlSetting missing: " + std::string(name));
+                }
+            };
+
+            logBool("bDampenPlayerControls:Controls");
+            logFloat("fControllerDampenTime:Controls");
+            logFloat("fControllerBufferDepth:Controls");
+            logFloat("fSprintAngleToPathThreshold:Controls");
+        }
 
         // Returns true when the player is actively drawing or aiming with a bow or crossbow.
         // Uses ActorState::GetAttackState() range kBowDraw..kBowNextAttack.
@@ -170,6 +268,240 @@ namespace msf
                 " smoothingRemoved=" + std::to_string(g_thirdPersonSmoothingAppliedCount));
         }
 
+        RuntimeLookState CaptureRuntimeLookState(RE::PlayerCamera* camera) noexcept
+        {
+            RuntimeLookState state{};
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (!player || !camera) {
+                return state;
+            }
+
+            state.valid = true;
+            state.playerPitch = player->GetAngleX();
+            state.playerYaw = player->GetAngleZ();
+            state.cameraYaw = camera->yaw;
+            state.rotationInputX = camera->rotationInput.x;
+            state.rotationInputY = camera->rotationInput.y;
+
+            const auto& actorState = REL::RelocateMemberIfNewer<RE::ActorState::ActorState1>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC0, 0xC8);
+            state.sprinting = static_cast<bool>(actorState.sprinting);
+            state.movingForward = static_cast<bool>(actorState.movingForward);
+            state.movingBack = static_cast<bool>(actorState.movingBack);
+            state.movingLeft = static_cast<bool>(actorState.movingLeft);
+            state.movingRight = static_cast<bool>(actorState.movingRight);
+            state.running = static_cast<bool>(actorState.running);
+
+            if (const auto* controls = RE::PlayerControls::GetSingleton()) {
+                state.controlsRunning = controls->data.running;
+                state.moveInput = controls->data.moveInputVec;
+                state.previousMoveInput = controls->data.prevMoveVec;
+                state.previousLookInput = controls->data.prevLookVec;
+                if (const auto* sprintHandler = controls->sprintHandler) {
+                    state.sprintHandlerPresent = true;
+                    state.sprintHeldActive = sprintHandler->heldStateActive;
+                    state.sprintTriggerRelease = sprintHandler->triggerReleaseEvent;
+                }
+            }
+
+            if (camera->cameraRoot) {
+                state.hasCameraRoot = true;
+                const auto& rotation = camera->cameraRoot->world.rotate;
+                state.cameraEulerValid = rotation.ToEulerAnglesXYZ(state.cameraRootEuler);
+                for (std::size_t row = 0; row < 3; ++row) {
+                    for (std::size_t column = 0; column < 3; ++column) {
+                        state.cameraMatrix[row][column] = rotation.entry[row][column];
+                    }
+                }
+            }
+            return state;
+        }
+
+        void LogPreviousRuntimeLookEvent(
+            const RuntimeLookState& currentState,
+            std::chrono::steady_clock::time_point now)
+        {
+            const auto input = g_runtimeLookInput.Consume();
+            if (!input || !g_hasPreviousRuntimeLookState || !currentState.valid) {
+                return;
+            }
+
+            const auto& previousState = g_previousRuntimeLookState;
+            const float playerPitchDelta = WrappedAngleDelta(currentState.playerPitch, previousState.playerPitch);
+            const float playerYawDelta = WrappedAngleDelta(currentState.playerYaw, previousState.playerYaw);
+            const float cameraYawDelta = WrappedAngleDelta(currentState.cameraYaw, previousState.cameraYaw);
+            const bool rootDeltaValid = previousState.hasCameraRoot && currentState.hasCameraRoot &&
+                previousState.cameraEulerValid && currentState.cameraEulerValid;
+            const float cameraRootXDelta = rootDeltaValid
+                ? WrappedAngleDelta(currentState.cameraRootEuler.x, previousState.cameraRootEuler.x) : 0.0F;
+            const float cameraRootYDelta = rootDeltaValid
+                ? WrappedAngleDelta(currentState.cameraRootEuler.y, previousState.cameraRootEuler.y) : 0.0F;
+            const float cameraRootZDelta = rootDeltaValid
+                ? WrappedAngleDelta(currentState.cameraRootEuler.z, previousState.cameraRootEuler.z) : 0.0F;
+            const auto eventDeltaUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                now - g_previousRuntimeLookEventTime).count();
+            const bool mixedSprintState = input->sprintEventCount != 0 &&
+                input->sprintEventCount != input->eventCount;
+
+            ++g_runtimeLookEventCount;
+            LogInfo(
+                "RuntimeLookEvent"
+                " sequence=" + std::to_string(g_runtimeLookEventCount) +
+                " dtUs=" + std::to_string(eventDeltaUs) +
+                " events=" + std::to_string(input->eventCount) +
+                " sprintEvents=" + std::to_string(input->sprintEventCount) +
+                " sprintBefore=" + std::to_string(previousState.sprinting) +
+                " sprintAfter=" + std::to_string(currentState.sprinting) +
+                " mixedSprint=" + std::to_string(mixedSprintState) +
+                " movementBefore=(" + std::to_string(previousState.movingForward) + "," +
+                    std::to_string(previousState.movingBack) + "," + std::to_string(previousState.movingLeft) + "," +
+                    std::to_string(previousState.movingRight) + "," + std::to_string(previousState.running) + ")" +
+                " movementAfter=(" + std::to_string(currentState.movingForward) + "," +
+                    std::to_string(currentState.movingBack) + "," + std::to_string(currentState.movingLeft) + "," +
+                    std::to_string(currentState.movingRight) + "," + std::to_string(currentState.running) + ")" +
+                " controlsBefore=(" + std::to_string(previousState.controlsRunning) + "," +
+                    std::to_string(previousState.sprintHandlerPresent) + "," +
+                    std::to_string(previousState.sprintHeldActive) + "," +
+                    std::to_string(previousState.sprintTriggerRelease) + ")" +
+                " controlsAfter=(" + std::to_string(currentState.controlsRunning) + "," +
+                    std::to_string(currentState.sprintHandlerPresent) + "," +
+                    std::to_string(currentState.sprintHeldActive) + "," +
+                    std::to_string(currentState.sprintTriggerRelease) + ")" +
+                " moveInputBefore=(" + std::to_string(previousState.moveInput.x) + "," +
+                    std::to_string(previousState.moveInput.y) + ")" +
+                " moveInputAfter=(" + std::to_string(currentState.moveInput.x) + "," +
+                    std::to_string(currentState.moveInput.y) + ")" +
+                " prevMoveBefore=(" + std::to_string(previousState.previousMoveInput.x) + "," +
+                    std::to_string(previousState.previousMoveInput.y) + ")" +
+                " prevMoveAfter=(" + std::to_string(currentState.previousMoveInput.x) + "," +
+                    std::to_string(currentState.previousMoveInput.y) + ")" +
+                " prevLookBefore=(" + std::to_string(previousState.previousLookInput.x) + "," +
+                    std::to_string(previousState.previousLookInput.y) + ")" +
+                " prevLookAfter=(" + std::to_string(currentState.previousLookInput.x) + "," +
+                    std::to_string(currentState.previousLookInput.y) + ")" +
+                " rawPx=(" + std::to_string(input->rawPixelX) + "," + std::to_string(input->rawPixelY) + ")" +
+                " engine=(" + std::to_string(input->engineX) + "," + std::to_string(input->engineY) + ")" +
+                " out=(" + std::to_string(input->outputX) + "," + std::to_string(input->outputY) + ")" +
+                " playerBefore=(" + std::to_string(previousState.playerPitch) + "," + std::to_string(previousState.playerYaw) + ")" +
+                " playerAfter=(" + std::to_string(currentState.playerPitch) + "," + std::to_string(currentState.playerYaw) + ")" +
+                " playerDelta=(" + std::to_string(playerPitchDelta) + "," + std::to_string(playerYawDelta) + ")" +
+                " cameraYawBefore=" + std::to_string(previousState.cameraYaw) +
+                " cameraYawAfter=" + std::to_string(currentState.cameraYaw) +
+                " cameraYawDelta=" + std::to_string(cameraYawDelta) +
+                " rotationInputBefore=(" + std::to_string(previousState.rotationInputX) + "," + std::to_string(previousState.rotationInputY) + ")" +
+                " rotationInputAfter=(" + std::to_string(currentState.rotationInputX) + "," + std::to_string(currentState.rotationInputY) + ")" +
+                " rootDeltaValid=" + std::to_string(rootDeltaValid) +
+                " rootBefore=(" + std::to_string(previousState.cameraRootEuler.x) + "," +
+                    std::to_string(previousState.cameraRootEuler.y) + "," + std::to_string(previousState.cameraRootEuler.z) + ")" +
+                " rootAfter=(" + std::to_string(currentState.cameraRootEuler.x) + "," +
+                    std::to_string(currentState.cameraRootEuler.y) + "," + std::to_string(currentState.cameraRootEuler.z) + ")" +
+                " rootDelta=(" + std::to_string(cameraRootXDelta) + "," +
+                    std::to_string(cameraRootYDelta) + "," + std::to_string(cameraRootZDelta) + ")" +
+                " rootMatrixBefore=(" +
+                    std::to_string(previousState.cameraMatrix[0][0]) + "," + std::to_string(previousState.cameraMatrix[0][1]) + "," + std::to_string(previousState.cameraMatrix[0][2]) + "," +
+                    std::to_string(previousState.cameraMatrix[1][0]) + "," + std::to_string(previousState.cameraMatrix[1][1]) + "," + std::to_string(previousState.cameraMatrix[1][2]) + "," +
+                    std::to_string(previousState.cameraMatrix[2][0]) + "," + std::to_string(previousState.cameraMatrix[2][1]) + "," + std::to_string(previousState.cameraMatrix[2][2]) + ")" +
+                " rootMatrixAfter=(" +
+                    std::to_string(currentState.cameraMatrix[0][0]) + "," + std::to_string(currentState.cameraMatrix[0][1]) + "," + std::to_string(currentState.cameraMatrix[0][2]) + "," +
+                    std::to_string(currentState.cameraMatrix[1][0]) + "," + std::to_string(currentState.cameraMatrix[1][1]) + "," + std::to_string(currentState.cameraMatrix[1][2]) + "," +
+                    std::to_string(currentState.cameraMatrix[2][0]) + "," + std::to_string(currentState.cameraMatrix[2][1]) + "," + std::to_string(currentState.cameraMatrix[2][2]) + ")");
+        }
+
+        void PlayerModifyMovementDataHook(
+            RE::PlayerCharacter* player,
+            float delta,
+            RE::NiPoint3& movementData,
+            RE::NiPoint3& rotationData)
+        {
+            if (!g_originalPlayerModifyMovementData) {
+                return;
+            }
+
+            auto* controls = RE::PlayerControls::GetSingleton();
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            const auto config = ConfigManager::Get().GetSnapshot();
+            const bool sprinting = IsSprintingRelocated(player);
+            const bool inThirdPerson = camera && camera->IsInThirdPerson();
+            const RE::NiPoint2 lookInput = controls ? controls->data.lookInputVec : RE::NiPoint2{};
+            const RE::NiPoint2 previousLookInput = controls ? controls->data.prevLookVec : RE::NiPoint2{};
+            const RE::NiPoint3 movementBefore = movementData;
+            const RE::NiPoint3 engineRotation = rotationData;
+            rotationData.z = RestoreHalfRateSprintYawDelta(
+                lookInput.x,
+                delta,
+                rotationData.z,
+                config.enabled &&
+                    !config.hotDisable &&
+                    config.enableFirstPersonHook &&
+                    !inThirdPerson &&
+                    sprinting);
+            const bool yawCorrected = rotationData.z != engineRotation.z;
+            if (yawCorrected) {
+                ++g_playerYawCorrectionCount;
+            }
+            const RE::NiPoint3 rotationBefore = rotationData;
+            const float playerYawBefore = player ? player->GetAngleZ() : 0.0F;
+
+            RE::HighProcessData* highProcess = nullptr;
+            RE::NiPoint3 currentRotationBefore{};
+            RE::NiPoint3 desiredRotationBefore{};
+            if (player) {
+                if (auto* process = player->GetActorRuntimeData().currentProcess) {
+                    highProcess = process->high;
+                    if (highProcess) {
+                        currentRotationBefore = highProcess->pathingCurrentRotationSpeed;
+                        desiredRotationBefore = highProcess->pathingDesiredRotationSpeed;
+                    }
+                }
+            }
+
+            g_originalPlayerModifyMovementData(player, delta, movementData, rotationData);
+
+            if (!config.verboseLogging || inThirdPerson) {
+                return;
+            }
+
+            RE::NiPoint3 currentRotationAfter{};
+            RE::NiPoint3 desiredRotationAfter{};
+            if (highProcess) {
+                currentRotationAfter = highProcess->pathingCurrentRotationSpeed;
+                desiredRotationAfter = highProcess->pathingDesiredRotationSpeed;
+            }
+
+            ++g_playerMovementTraceCount;
+            LogInfo(
+                "PlayerMovementTrace"
+                " sequence=" + std::to_string(g_playerMovementTraceCount) +
+                " sprint=" + std::to_string(sprinting) +
+                " yawCorrected=" + std::to_string(yawCorrected) +
+                " correctionCount=" + std::to_string(g_playerYawCorrectionCount) +
+                " delta=" + std::to_string(delta) +
+                " lookPostSensitivity=(" + std::to_string(lookInput.x) + "," +
+                    std::to_string(lookInput.y) + ")" +
+                " prevLook=(" + std::to_string(previousLookInput.x) + "," +
+                    std::to_string(previousLookInput.y) + ")" +
+                " movementBefore=(" + std::to_string(movementBefore.x) + "," +
+                    std::to_string(movementBefore.y) + "," + std::to_string(movementBefore.z) + ")" +
+                " movementAfter=(" + std::to_string(movementData.x) + "," +
+                    std::to_string(movementData.y) + "," + std::to_string(movementData.z) + ")" +
+                " engineRotation=(" + std::to_string(engineRotation.x) + "," +
+                    std::to_string(engineRotation.y) + "," + std::to_string(engineRotation.z) + ")" +
+                " rotationBefore=(" + std::to_string(rotationBefore.x) + "," +
+                    std::to_string(rotationBefore.y) + "," + std::to_string(rotationBefore.z) + ")" +
+                " rotationAfter=(" + std::to_string(rotationData.x) + "," +
+                    std::to_string(rotationData.y) + "," + std::to_string(rotationData.z) + ")" +
+                " currentRotationBefore=(" + std::to_string(currentRotationBefore.x) + "," +
+                    std::to_string(currentRotationBefore.y) + "," + std::to_string(currentRotationBefore.z) + ")" +
+                " currentRotationAfter=(" + std::to_string(currentRotationAfter.x) + "," +
+                    std::to_string(currentRotationAfter.y) + "," + std::to_string(currentRotationAfter.z) + ")" +
+                " desiredRotationBefore=(" + std::to_string(desiredRotationBefore.x) + "," +
+                    std::to_string(desiredRotationBefore.y) + "," + std::to_string(desiredRotationBefore.z) + ")" +
+                " desiredRotationAfter=(" + std::to_string(desiredRotationAfter.x) + "," +
+                    std::to_string(desiredRotationAfter.y) + "," + std::to_string(desiredRotationAfter.z) + ")" +
+                " playerYawBefore=" + std::to_string(playerYawBefore) +
+                " playerYawAfter=" + std::to_string(player ? player->GetAngleZ() : 0.0F));
+        }
+
         void ProcessMouseMoveHook(RE::LookHandler* handler, RE::MouseMoveEvent* event, RE::PlayerControlsData* data)
         {
             if (!g_mouseHookFiredOnce) {
@@ -190,32 +522,26 @@ namespace msf
 
             ConfigManager::Get().ReloadIfChanged();
             const auto reloadedConfig = ConfigManager::Get().GetSnapshot();
-            if (!reloadedConfig.enabled) {
+            LogRuntimeControlSettingsOnce();
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            const bool inThirdPerson = camera && camera->IsInThirdPerson();
+            auto* player = RE::PlayerCharacter::GetSingleton();
+
+            if (!g_activeCoordinator->ShouldApplyInputTransform(reloadedConfig, inThirdPerson, false)) {
+                g_runtimeLookInput.Consume();
+                g_hasPreviousRuntimeLookState = false;
                 g_originalProcessMouseMove(handler, event, data);
                 return;
             }
 
             ++g_lookHookCallsTotal;
 
-            const auto* camera = RE::PlayerCamera::GetSingleton();
-            const bool inThirdPerson = camera && camera->IsInThirdPerson();
             if (inThirdPerson) {
                 ++g_lookHookCallsThirdPerson;
                 g_lastCameraState = "ThirdPerson";
             } else {
                 ++g_lookHookCallsFirstPerson;
                 g_lastCameraState = "FirstPerson";
-            }
-
-            if (!inThirdPerson && !reloadedConfig.enableFirstPersonHook) {
-                LogLookHookCountersIfNeeded(reloadedConfig);
-                g_originalProcessMouseMove(handler, event, data);
-                return;
-            }
-            if (inThirdPerson && !reloadedConfig.enableThirdPersonHook) {
-                LogLookHookCountersIfNeeded(reloadedConfig);
-                g_originalProcessMouseMove(handler, event, data);
-                return;
             }
 
             if (reloadedConfig.disableInMenus) {
@@ -258,6 +584,15 @@ namespace msf
             // Capture raw OS mouse pixels before the engine applies any state-based scaling.
             const float rawPixelX = static_cast<float>(event->mouseInputX);
             const float rawPixelY = static_cast<float>(event->mouseInputY);
+            const auto runtimeLookEventTime = std::chrono::steady_clock::now();
+            RuntimeLookState runtimeLookStateBeforeInput{};
+            if (reloadedConfig.verboseLogging && !inThirdPerson) {
+                runtimeLookStateBeforeInput = CaptureRuntimeLookState(camera);
+                LogPreviousRuntimeLookEvent(runtimeLookStateBeforeInput, runtimeLookEventTime);
+            } else {
+                g_runtimeLookInput.Consume();
+                g_hasPreviousRuntimeLookState = false;
+            }
 
             g_originalProcessMouseMove(handler, event, data);
             if (!data) {
@@ -267,7 +602,6 @@ namespace msf
             g_lastRawX = data->lookInputVec.x;
             g_lastRawY = data->lookInputVec.y;
 
-            auto* player = RE::PlayerCharacter::GetSingleton();
             if (player) {
                 g_lastAttackState = static_cast<std::uint32_t>(GetAttackStateRelocated(player));
                 g_lastWeaponDrawn = IsWeaponDrawnRelocated(player);
@@ -332,6 +666,21 @@ namespace msf
             g_lastOutY = outY;
             data->lookInputVec.x = outX;
             data->lookInputVec.y = outY;
+            if (reloadedConfig.verboseLogging) {
+                g_runtimeLookInput.Record(
+                    rawPixelX,
+                    rawPixelY,
+                    g_lastEngineX,
+                    g_lastEngineY,
+                    outX,
+                    outY,
+                    IsSprintingRelocated(player));
+                if (runtimeLookStateBeforeInput.valid) {
+                    g_previousRuntimeLookState = runtimeLookStateBeforeInput;
+                    g_previousRuntimeLookEventTime = runtimeLookEventTime;
+                    g_hasPreviousRuntimeLookState = true;
+                }
+            }
             LogLookHookCountersIfNeeded(reloadedConfig);
         }
 
@@ -356,11 +705,6 @@ namespace msf
 
             ConfigManager::Get().ReloadIfChanged();
             const auto reloadedConfig = ConfigManager::Get().GetSnapshot();
-            if (!reloadedConfig.enabled || !reloadedConfig.affectGamepadLook) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
-
             if (!event->IsRight()) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
@@ -369,11 +713,7 @@ namespace msf
             const auto* camera = RE::PlayerCamera::GetSingleton();
             const bool inThirdPerson = camera && camera->IsInThirdPerson();
 
-            if (!inThirdPerson && !reloadedConfig.enableFirstPersonHook) {
-                g_originalProcessThumbstick(handler, event, data);
-                return;
-            }
-            if (inThirdPerson && !reloadedConfig.enableThirdPersonHook) {
+            if (!g_activeCoordinator->ShouldApplyInputTransform(reloadedConfig, inThirdPerson, true)) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
             }
@@ -440,7 +780,7 @@ namespace msf
 
             g_originalThirdPersonHandleLookInput(state, input);
 
-            if (!state || !g_allowThirdPersonIntervention) {
+            if (!state || !g_activeCoordinator) {
                 return;
             }
 
@@ -448,7 +788,7 @@ namespace msf
             const auto config = ConfigManager::Get().GetSnapshot();
             ++g_thirdPersonHookCallsTotal;
 
-            if (!config.enabled || !config.enableSmoothingRemovalHook) {
+            if (!g_activeCoordinator->ShouldRemoveThirdPersonSmoothing(config)) {
                 LogThirdPersonHookCountersIfNeeded(config);
                 return;
             }
@@ -459,8 +799,77 @@ namespace msf
             ++g_thirdPersonSmoothingAppliedCount;
             LogThirdPersonHookCountersIfNeeded(config);
         }
+
     }
 #endif
+
+    void RuntimeLookTelemetryAccumulator::Record(
+        float rawPixelX,
+        float rawPixelY,
+        float engineX,
+        float engineY,
+        float outputX,
+        float outputY,
+        bool sprinting) noexcept
+    {
+        ++_sample.eventCount;
+        if (sprinting) {
+            ++_sample.sprintEventCount;
+        }
+        _sample.rawPixelX += rawPixelX;
+        _sample.rawPixelY += rawPixelY;
+        _sample.engineX += engineX;
+        _sample.engineY += engineY;
+        _sample.outputX += outputX;
+        _sample.outputY += outputY;
+    }
+
+    std::optional<RuntimeLookInputSample> RuntimeLookTelemetryAccumulator::Consume() noexcept
+    {
+        if (_sample.eventCount == 0) {
+            return std::nullopt;
+        }
+
+        const auto sample = _sample;
+        _sample = {};
+        return sample;
+    }
+
+    float WrappedAngleDelta(float current, float previous) noexcept
+    {
+        constexpr float twoPi = 2.0F * std::numbers::pi_v<float>;
+        float delta = std::fmod(current - previous + std::numbers::pi_v<float>, twoPi);
+        if (delta < 0.0F) {
+            delta += twoPi;
+        }
+        return delta - std::numbers::pi_v<float>;
+    }
+
+    float RestoreHalfRateSprintYawDelta(
+        float postSensitivityLookX,
+        float deltaSeconds,
+        float engineYawDelta,
+        bool eligible) noexcept
+    {
+        if (!eligible || deltaSeconds <= 0.0F) {
+            return engineYawDelta;
+        }
+
+        const float expectedYawDelta =
+            postSensitivityLookX * deltaSeconds * std::numbers::pi_v<float>;
+        if (std::abs(expectedYawDelta) < 0.00001F) {
+            return engineYawDelta;
+        }
+
+        const float observedScale = engineYawDelta / expectedYawDelta;
+        constexpr float halfRateLowerBound = 0.48F;
+        constexpr float halfRateUpperBound = 0.52F;
+        if (observedScale >= halfRateLowerBound && observedScale <= halfRateUpperBound) {
+            return expectedYawDelta;
+        }
+
+        return engineYawDelta;
+    }
 
     bool HookCoordinator::InstallLookHandlerMouseMoveHook()
     {
@@ -476,11 +885,12 @@ namespace msf
         }
 
         if (!g_originalProcessThumbstick || !g_originalProcessMouseMove) {
-            LogError("Failed to install LookHandler thumbstick/mouse vtable hooks.");
+            LogError("Failed to install LookHandler input vtable hooks.");
+            RemoveLookHandlerMouseMoveHook();
             return false;
         }
 
-        LogInfo("Installed relocation-backed LookHandler::ProcessThumbstick and ProcessMouseMove hooks.");
+        LogInfo("Installed relocation-backed LookHandler input hooks with prior-frame look telemetry.");
         g_lookHookCallsTotal = 0;
         g_lookHookCallsFirstPerson = 0;
         g_lookHookCallsThirdPerson = 0;
@@ -491,6 +901,11 @@ namespace msf
         g_lastOutY = 0.0F;
         g_lastCameraState = "Unknown";
         g_lastMouseEventTime = {};
+        g_runtimeLookInput = {};
+        g_runtimeLookEventCount = 0;
+        g_hasPreviousRuntimeLookState = false;
+        g_previousRuntimeLookState = {};
+        g_previousRuntimeLookEventTime = {};
         return true;
 #else
         LogWarn("CommonLibSSE disabled; cannot install relocation-backed mouse hook.");
@@ -514,7 +929,48 @@ namespace msf
         }
         g_originalProcessThumbstick = nullptr;
         g_originalProcessMouseMove = nullptr;
-        LogInfo("Removed LookHandler::ProcessThumbstick and ProcessMouseMove vtable hooks.");
+        LogInfo("Removed LookHandler input hooks.");
+#endif
+    }
+
+    bool HookCoordinator::InstallPlayerMovementTraceHook()
+    {
+#if MSF_USE_COMMONLIBSSE
+        if (g_originalPlayerModifyMovementData) {
+            return true;
+        }
+
+        REL::Relocation<std::uintptr_t> playerCharacterVTable{ RE::VTABLE_PlayerCharacter[0] };
+        g_originalPlayerModifyMovementData = reinterpret_cast<PlayerModifyMovementDataFn>(
+            playerCharacterVTable.write_vfunc(0x11A, PlayerModifyMovementDataHook));
+        if (!g_originalPlayerModifyMovementData) {
+            LogError("Failed to install PlayerCharacter::ModifyMovementData trace hook.");
+            return false;
+        }
+
+        g_playerMovementTraceCount = 0;
+        g_playerYawCorrectionCount = 0;
+        LogInfo("Installed PlayerCharacter::ModifyMovementData final-yaw trace hook.");
+        return true;
+#else
+        LogWarn("CommonLibSSE disabled; cannot install player movement trace hook.");
+        return false;
+#endif
+    }
+
+    void HookCoordinator::RemovePlayerMovementTraceHook()
+    {
+#if MSF_USE_COMMONLIBSSE
+        if (!g_originalPlayerModifyMovementData) {
+            return;
+        }
+
+        REL::Relocation<std::uintptr_t> playerCharacterVTable{ RE::VTABLE_PlayerCharacter[0] };
+        playerCharacterVTable.write_vfunc(
+            0x11A,
+            reinterpret_cast<std::uintptr_t>(g_originalPlayerModifyMovementData));
+        g_originalPlayerModifyMovementData = nullptr;
+        LogInfo("Removed PlayerCharacter::ModifyMovementData final-yaw trace hook.");
 #endif
     }
 
@@ -559,7 +1015,7 @@ namespace msf
     bool HookCoordinator::RegisterHookPoint(HookRegistrationPoint point)
     {
         switch (point) {
-        case HookRegistrationPoint::FirstPersonMouseLook:
+        case HookRegistrationPoint::InputLook:
             _firstPersonRegistered = InstallLookHandlerMouseMoveHook();
             return _firstPersonRegistered;
         case HookRegistrationPoint::SmoothingRemoval:
@@ -570,57 +1026,123 @@ namespace msf
         }
     }
 
-    bool HookCoordinator::Install(const CompatibilityPolicy& policy, const ConfigValues& config)
+    bool HookCoordinator::Install()
     {
-        if (!config.enabled || !policy.installInputHooks) {
-            _installed = false;
-            _activePolicy = policy;
-            LogWarn("Hooks not installed because plugin is disabled or policy blocks input hooks.");
+        if (_installed) {
             return true;
         }
 
-        bool ok = true;
         _firstPersonRegistered = false;
+        _playerMovementTraceRegistered = false;
         _smoothingRemovalRegistered = false;
-        _activePolicy = policy;
 #if MSF_USE_COMMONLIBSSE
         g_activeCoordinator = this;
-        g_allowThirdPersonIntervention = policy.allowThirdPersonIntervention;
 #endif
 
-        if (config.enableFirstPersonHook || config.enableThirdPersonHook) {
-            ok = ok && RegisterHookPoint(HookRegistrationPoint::FirstPersonMouseLook);
+        if (!RegisterHookPoint(HookRegistrationPoint::InputLook)) {
+#if MSF_USE_COMMONLIBSSE
+            g_activeCoordinator = nullptr;
+#endif
+            return false;
         }
 
-        if (config.enableThirdPersonHook && !policy.allowThirdPersonIntervention) {
-            LogWarn("Third-person hook skipped due to compatibility policy.");
+        _playerMovementTraceRegistered = InstallPlayerMovementTraceHook();
+        if (!_playerMovementTraceRegistered) {
+            RemoveLookHandlerMouseMoveHook();
+            _firstPersonRegistered = false;
+#if MSF_USE_COMMONLIBSSE
+            g_activeCoordinator = nullptr;
+#endif
+            return false;
         }
 
-        if (config.enableSmoothingRemovalHook && policy.installSmoothingRemovalHooks) {
-            ok = ok && RegisterHookPoint(HookRegistrationPoint::SmoothingRemoval);
-        } else if (config.enableSmoothingRemovalHook) {
-            LogWarn("Smoothing-removal hook skipped due to compatibility policy.");
+        if (!RegisterHookPoint(HookRegistrationPoint::SmoothingRemoval)) {
+            RemovePlayerMovementTraceHook();
+            _playerMovementTraceRegistered = false;
+            RemoveLookHandlerMouseMoveHook();
+            _firstPersonRegistered = false;
+#if MSF_USE_COMMONLIBSSE
+            g_activeCoordinator = nullptr;
+#endif
+            return false;
         }
 
-        _installed = ok;
-        return ok;
+        _installed = true;
+        LogInfo("All input hooks installed; runtime configuration controls pass-through behavior.");
+        return true;
     }
 
     void HookCoordinator::Remove()
     {
-        if (!_installed) {
-            return;
-        }
-
+        RemovePlayerMovementTraceHook();
         RemoveLookHandlerMouseMoveHook();
         RemoveThirdPersonSmoothingHook();
         _firstPersonRegistered = false;
+        _playerMovementTraceRegistered = false;
         _smoothingRemovalRegistered = false;
         _installed = false;
 #if MSF_USE_COMMONLIBSSE
         g_activeCoordinator = nullptr;
 #endif
         LogInfo("Mouse hook registrations removed.");
+    }
+
+    bool HookCoordinator::UpdatePolicy(const CompatibilityPolicy& policy)
+    {
+        bool changed = false;
+        {
+            std::scoped_lock guard(_policyLock);
+            changed = _activePolicy.mode != policy.mode ||
+                      _activePolicy.installInputHooks != policy.installInputHooks ||
+                      _activePolicy.installSmoothingRemovalHooks != policy.installSmoothingRemovalHooks ||
+                      _activePolicy.allowThirdPersonSmoothingIntervention != policy.allowThirdPersonSmoothingIntervention ||
+                      _activePolicy.reason != policy.reason;
+            _activePolicy = policy;
+        }
+        std::uint8_t flags = 0;
+        if (policy.installInputHooks) {
+            flags |= kInputTransformsAllowed;
+        }
+        if (policy.installSmoothingRemovalHooks) {
+            flags |= kSmoothingRemovalAllowed;
+        }
+        if (policy.allowThirdPersonSmoothingIntervention) {
+            flags |= kThirdPersonSmoothingAllowed;
+        }
+        _policyFlags.store(flags, std::memory_order_release);
+        return changed;
+    }
+
+    CompatibilityPolicy HookCoordinator::GetPolicySnapshot() const
+    {
+        std::scoped_lock guard(_policyLock);
+        return _activePolicy;
+    }
+
+    bool HookCoordinator::ShouldApplyInputTransform(
+        const ConfigValues& config,
+        bool inThirdPerson,
+        bool isGamepad) const
+    {
+        const auto policyFlags = _policyFlags.load(std::memory_order_acquire);
+        if (!config.enabled || config.hotDisable ||
+            (policyFlags & kInputTransformsAllowed) == 0) {
+            return false;
+        }
+        if (isGamepad && !config.affectGamepadLook) {
+            return false;
+        }
+        return inThirdPerson ? config.enableThirdPersonHook : config.enableFirstPersonHook;
+    }
+
+    bool HookCoordinator::ShouldRemoveThirdPersonSmoothing(const ConfigValues& config) const
+    {
+        const auto policyFlags = _policyFlags.load(std::memory_order_acquire);
+        return config.enabled &&
+               !config.hotDisable &&
+               config.enableSmoothingRemovalHook &&
+               (policyFlags & kSmoothingRemovalAllowed) != 0 &&
+               (policyFlags & kThirdPersonSmoothingAllowed) != 0;
     }
 
     std::pair<float, float> HookCoordinator::ApplyTransform(float deltaX, float deltaY, const ConfigValues& config, bool isGamepad) const

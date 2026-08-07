@@ -18,7 +18,7 @@ namespace msf
         CompatibilityMode mode{ CompatibilityMode::Safe };
         bool installInputHooks{ true };
         bool installSmoothingRemovalHooks{ true };
-        bool allowThirdPersonIntervention{ true };
+        bool allowThirdPersonSmoothingIntervention{ true };
         std::string reason;
     };
 

@@ -30,3 +30,5 @@ Ship a DLL-only SKSE plugin that:
 - X/Y behavior validated in repeatable tests
 - Smoothing-removal behavior verified
 - UI and INI settings both apply correctly
+- Automated checks pass on Windows and Linux, and the plugin builds from a clean clone in Windows CI
+- Every advertised Skyrim runtime has a recorded in-game validation result

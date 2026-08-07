@@ -9,13 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build
 
 ```bash
-# Configure (run once or after CMakeLists changes)
-cmake -S . -B build-commonlib -G "Visual Studio 17 2022" -A x64 \
-  -DCMAKE_TOOLCHAIN_FILE=".vcpkg/scripts/buildsystems/vcpkg.cmake" \
-  -DVCPKG_TARGET_TRIPLET=x64-windows
+# Bootstrap pinned dependencies, configure, build, and test
+./scripts/bootstrap-vcpkg.ps1
+cmake --preset plugin-release
+cmake --build --preset plugin-release
+ctest --preset plugin-release
 
-# Build
-cmake --build build-commonlib --config Release
+# Create the mod-manager-ready ZIP
+cmake --build --preset plugin-release --target package
 ```
 
 Output: `build-commonlib/Release/MouseSensitivityFix.dll`
@@ -34,15 +35,16 @@ sed -i 's/bVerboseLogging=false/bVerboseLogging=true/' "$DEPLOY/MouseSensitivity
 
 The source `dist/` INI always keeps `bVerboseLogging=false` (release default). Only the deployed copy gets it flipped to `true`. Check `MouseSensitivityFix.log` after launch for clean startup.
 
-There are no automated tests — validation is manual per `docs/TEST_PLAN.md`. Validate on runtimes `1.5.97`, `1.6.640`, latest Steam `1.6.x`, and GOG before release.
+Dependency-free tests run with the `unit-tests` configure/build/test presets. CI runs those tests on Windows and Linux, then performs a full Windows plugin build, test, package, and artifact upload. In-game validation remains manual per `docs/TEST_PLAN.md` and is recorded in `docs/RUNTIME_VALIDATION.md`.
 
 ## Architecture
 
 Initialization order (`Plugin::Initialize` in `src/Plugin.cpp`):
-1. `ConfigManager` loads INI; applies `hotDisable` or crash-guard early-out if triggered
+1. `ConfigManager` loads the INI
 2. `CompatibilityManager` scans `Data/SKSE/Plugins/` for SmoothCam/Improved Camera DLLs and produces a `CompatibilityPolicy`
-3. `HookCoordinator::Install` installs vtable hooks gated by that policy
-4. `MenuFrameworkBridge::Initialize` registers the in-game ImGui panel (optional; falls back to INI-only)
+3. `ConfigManager` registers a serialized callback that recomputes and atomically publishes compatibility policy
+4. `HookCoordinator::Install` transactionally installs all vtable hooks; disabled features remain pass-through
+5. `MenuFrameworkBridge::Initialize` registers the in-game ImGui panel (optional; falls back to INI-only)
 
 ### Hook system (`src/hooks/Hooks.cpp`)
 
@@ -58,15 +60,15 @@ Each mouse/gamepad hook calls the original function first, then reads `data->loo
 
 Transform: `out = delta * globalSensitivity * axisMultiplier`. `ApplyTransform` takes an `isGamepad` bool to select mouse or gamepad multipliers (`mouseX/Y` vs `gamepadX/Y`).
 
-Both hooks reload `ConfigManager` on every call via `ReloadIfChanged()` (file-watch with mutex), so INI edits apply without restart.
+Hook callbacks call `ReloadIfChanged()`, which throttles filesystem polling to once per 250 ms. INI and UI changes are serialized, then compatibility behavior is updated through atomic gates. Hooks are never removed or installed from an input callback.
 
 ### Config (`src/config/Config.cpp`, `include/MouseSensitivityFix/Config.h`)
 
-`ConfigManager` is a singleton. `GetSnapshot()` returns a copy of `ConfigValues` for thread-safe reads. `ApplyUiUpdate()` writes a new snapshot and saves to INI. The full field list with defaults is in `Config.h`.
+`ConfigManager` is a singleton. `GetSnapshot()` returns a copy of `ConfigValues` for thread-safe reads. `ApplyUiUpdate()` clamps and publishes a new in-memory snapshot; the UI's **Save to INI** button persists it. The full field list with defaults is in `Config.h`.
 
 ### Compatibility (`src/compat/Compatibility.cpp`)
 
-`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` returns a `CompatibilityPolicy` that may set `allowThirdPersonIntervention = false` or `installSmoothingRemovalHooks = false` to avoid conflicts. Policy is driven directly from `_improvedCameraDetected` / `_smoothCamDetected` flags; `bForceOverrideSmoothCam` / `bForceOverrideImprovedCamera` in INI can bypass auto-detection.
+`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` may delegate third-person smoothing removal while keeping core sensitivity transforms active. Live changes to `bForceOverrideSmoothCam` and `bForceOverrideImprovedCamera` recompute that policy without reinstalling hooks.
 
 ## Local-only directories
 

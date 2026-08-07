@@ -33,7 +33,7 @@ namespace
             }
 
             const auto fileName = dirEntry.path().filename().string();
-            if (dirEntry.path().extension() == ".dll") {
+            if (ToLower(dirEntry.path().extension().string()) == ".dll") {
                 entries.insert(ToLower(fileName));
             }
         }
@@ -96,7 +96,7 @@ namespace msf
                 policy.installSmoothingRemovalHooks = false;
             }
             if (config.delegateThirdPersonWhenSmoothCam && !config.forceOverrideSmoothCam) {
-                policy.allowThirdPersonIntervention = false;
+                policy.allowThirdPersonSmoothingIntervention = false;
             }
             policy.reason = "SmoothCam preset active.";
         }
@@ -104,7 +104,7 @@ namespace msf
         if (improvedDetected && config.presetImprovedCamera) {
             policy.mode = CompatibilityMode::ReducedIntervention;
             if (config.delegateThirdPersonWhenImprovedCamera && !config.forceOverrideImprovedCamera) {
-                policy.allowThirdPersonIntervention = false;
+                policy.allowThirdPersonSmoothingIntervention = false;
             }
             if (policy.reason.empty()) {
                 policy.reason = "Improved Camera preset active.";
