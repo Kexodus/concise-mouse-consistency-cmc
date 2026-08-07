@@ -117,35 +117,6 @@ namespace
         CHECK(coordinator.ShouldRemoveThirdPersonSmoothing(config));
     }
 
-    void TestRuntimeLookTelemetryAggregation()
-    {
-        msf::RuntimeLookTelemetryAccumulator telemetry;
-        CHECK(!telemetry.Consume().has_value());
-
-        telemetry.Record(3.0F, -2.0F, 3.0F, 2.0F, 3.0F, 2.0F, false);
-        telemetry.Record(5.0F, 1.0F, 5.0F, -1.0F, 5.0F, -1.0F, true);
-
-        const auto sample = telemetry.Consume();
-        CHECK(sample.has_value());
-        CHECK(sample->eventCount == 2);
-        CHECK(sample->sprintEventCount == 1);
-        CHECK(Near(sample->rawPixelX, 8.0F));
-        CHECK(Near(sample->rawPixelY, -1.0F));
-        CHECK(Near(sample->engineX, 8.0F));
-        CHECK(Near(sample->engineY, 1.0F));
-        CHECK(Near(sample->outputX, 8.0F));
-        CHECK(Near(sample->outputY, 1.0F));
-        CHECK(!telemetry.Consume().has_value());
-    }
-
-    void TestWrappedAngleDelta()
-    {
-        constexpr float pi = 3.14159265358979323846F;
-        CHECK(Near(msf::WrappedAngleDelta(0.75F, 0.25F), 0.5F));
-        CHECK(Near(msf::WrappedAngleDelta(-pi + 0.1F, pi - 0.1F), 0.2F));
-        CHECK(Near(msf::WrappedAngleDelta(pi - 0.1F, -pi + 0.1F), -0.2F));
-    }
-
     void TestHalfRateSprintYawRestoration()
     {
         constexpr float pi = 3.14159265358979323846F;
@@ -155,12 +126,29 @@ namespace
 
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.5F, true), expected));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(-lookX, delta, -expected * 0.5F, true), -expected));
+        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.48F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.52F, true), expected));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.49F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.47F, true), expected * 0.47F));
+        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.53F, true), expected * 0.53F));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected, true), expected));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.75F, true), expected * 0.75F));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.5F, false), expected * 0.5F));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(0.0F, delta, 0.25F, true), 0.25F));
         CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, 0.0F, 0.25F, true), 0.25F));
+    }
+
+    void TestSampledLoggingPolicy()
+    {
+        CHECK(!msf::ShouldEmitSampledLog(false, 600, 600));
+        CHECK(!msf::ShouldEmitSampledLog(true, 0, 600));
+        CHECK(!msf::ShouldEmitSampledLog(true, 1, 600));
+        CHECK(msf::ShouldEmitSampledLog(true, 1, 120, true));
+        CHECK(!msf::ShouldEmitSampledLog(true, 119, 120, true));
+        CHECK(msf::ShouldEmitSampledLog(true, 120, 120, true));
+        CHECK(!msf::ShouldEmitSampledLog(true, 121, 120, true));
+        CHECK(msf::ShouldEmitSampledLog(true, 600, 600));
+        CHECK(!msf::ShouldEmitSampledLog(true, 600, 0));
     }
 
     void TestConfigLoadClampSaveAndReload()
@@ -272,9 +260,8 @@ int main()
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
         { "transform and runtime gates", TestTransformAndRuntimeGates },
         { "live compatibility policy updates", TestLiveCompatibilityPolicyUpdates },
-        { "runtime look telemetry aggregation", TestRuntimeLookTelemetryAggregation },
-        { "wrapped angle delta", TestWrappedAngleDelta },
         { "half-rate sprint yaw restoration", TestHalfRateSprintYawRestoration },
+        { "sampled logging policy", TestSampledLoggingPolicy },
         { "config load, clamp, save, and reload", TestConfigLoadClampSaveAndReload },
         { "compatibility presets can be disabled", TestCompatibilityPresetCanBeDisabled },
         { "config callbacks are serialized", TestConfigCallbacksAreSerialized },

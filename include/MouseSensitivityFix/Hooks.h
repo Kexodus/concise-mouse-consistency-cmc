@@ -6,7 +6,6 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
-#include <optional>
 #include <utility>
 
 namespace msf
@@ -17,41 +16,16 @@ namespace msf
         SmoothingRemoval
     };
 
-    struct RuntimeLookInputSample
-    {
-        std::uint64_t eventCount{ 0 };
-        std::uint64_t sprintEventCount{ 0 };
-        float rawPixelX{ 0.0F };
-        float rawPixelY{ 0.0F };
-        float engineX{ 0.0F };
-        float engineY{ 0.0F };
-        float outputX{ 0.0F };
-        float outputY{ 0.0F };
-    };
-
-    class RuntimeLookTelemetryAccumulator
-    {
-    public:
-        void Record(
-            float rawPixelX,
-            float rawPixelY,
-            float engineX,
-            float engineY,
-            float outputX,
-            float outputY,
-            bool sprinting) noexcept;
-        std::optional<RuntimeLookInputSample> Consume() noexcept;
-
-    private:
-        RuntimeLookInputSample _sample{};
-    };
-
-    float WrappedAngleDelta(float current, float previous) noexcept;
     float RestoreHalfRateSprintYawDelta(
         float postSensitivityLookX,
         float deltaSeconds,
         float engineYawDelta,
         bool eligible) noexcept;
+    bool ShouldEmitSampledLog(
+        bool enabled,
+        std::uint64_t count,
+        std::uint64_t interval,
+        bool includeFirst = false) noexcept;
 
     class HookCoordinator
     {
@@ -70,13 +44,13 @@ namespace msf
         bool RegisterHookPoint(HookRegistrationPoint point);
         bool InstallLookHandlerMouseMoveHook();
         void RemoveLookHandlerMouseMoveHook();
-        bool InstallPlayerMovementTraceHook();
-        void RemovePlayerMovementTraceHook();
+        bool InstallPlayerSprintYawHook();
+        void RemovePlayerSprintYawHook();
         bool InstallThirdPersonSmoothingHook();
         void RemoveThirdPersonSmoothingHook();
         bool _installed{ false };
         bool _firstPersonRegistered{ false };
-        bool _playerMovementTraceRegistered{ false };
+        bool _playerSprintYawRegistered{ false };
         bool _smoothingRemovalRegistered{ false };
         mutable std::mutex _policyLock;
         CompatibilityPolicy _activePolicy{};
