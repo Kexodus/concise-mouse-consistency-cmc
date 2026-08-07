@@ -89,6 +89,38 @@ namespace
         CHECK(!coordinator.ShouldRemoveThirdPersonSmoothing(config));
     }
 
+    void TestBowAimMouseDeltasUseSampledXAndCurrentEngineY()
+    {
+        msf::ConfigValues config;
+        config.globalSensitivity = 2.0;
+        config.mouseYAxisMultiplier = 0.75;
+
+        const auto [bowAdjustedX, bowAdjustedY] = msf::ApplyBowAimMouseDeltas(
+            3.0F,
+            1.0F,
+            -4.0F,
+            2.0F,
+            0.5F,
+            0.5F);
+        CHECK(Near(bowAdjustedX, 3.0F));
+        CHECK(Near(bowAdjustedY, -2.0F));
+
+        msf::HookCoordinator coordinator;
+        const auto [outputX, outputY] = coordinator.ApplyTransform(bowAdjustedX, bowAdjustedY, config, false);
+        CHECK(Near(outputX, 6.0F));
+        CHECK(Near(outputY, -3.0F));
+
+        const auto [fallbackX, currentY] = msf::ApplyBowAimMouseDeltas(
+            0.5F,
+            4.0F,
+            -6.0F,
+            2.0F,
+            0.25F,
+            0.5F);
+        CHECK(Near(fallbackX, 1.0F));
+        CHECK(Near(currentY, -3.0F));
+    }
+
     void TestLiveCompatibilityPolicyUpdates()
     {
         TemporaryDirectory directory;
@@ -117,25 +149,36 @@ namespace
         CHECK(coordinator.ShouldRemoveThirdPersonSmoothing(config));
     }
 
-    void TestHalfRateSprintYawRestoration()
+    void TestHalfRateYawRestoration()
     {
         constexpr float pi = 3.14159265358979323846F;
         constexpr float lookX = 0.6F;
         constexpr float delta = 1.0F / 60.0F;
         constexpr float expected = lookX * delta * pi;
 
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.5F, true), expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(-lookX, delta, -expected * 0.5F, true), -expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.48F, true), expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.52F, true), expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.49F, true), expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.47F, true), expected * 0.47F));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.53F, true), expected * 0.53F));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected, true), expected));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.75F, true), expected * 0.75F));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, delta, expected * 0.5F, false), expected * 0.5F));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(0.0F, delta, 0.25F, true), 0.25F));
-        CHECK(Near(msf::RestoreHalfRateSprintYawDelta(lookX, 0.0F, 0.25F, true), 0.25F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.5F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(-lookX, delta, -expected * 0.5F, true), -expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.48F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.52F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.49F, true), expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.47F, true), expected * 0.47F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.53F, true), expected * 0.53F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected, true), expected));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.75F, true), expected * 0.75F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, delta, expected * 0.5F, false), expected * 0.5F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(0.0F, delta, 0.25F, true), 0.25F));
+        CHECK(Near(msf::RestoreHalfRateYawDelta(lookX, 0.0F, 0.25F, true), 0.25F));
+    }
+
+    void TestHalfRateYawEligibilityIncludesBowAim()
+    {
+        CHECK(msf::ShouldRestoreHalfRateFirstPersonYaw(true, false, true, false, true, false));
+        CHECK(msf::ShouldRestoreHalfRateFirstPersonYaw(true, false, true, false, false, true));
+        CHECK(!msf::ShouldRestoreHalfRateFirstPersonYaw(true, false, true, false, false, false));
+        CHECK(!msf::ShouldRestoreHalfRateFirstPersonYaw(true, false, true, true, false, true));
+        CHECK(!msf::ShouldRestoreHalfRateFirstPersonYaw(false, false, true, false, false, true));
+        CHECK(!msf::ShouldRestoreHalfRateFirstPersonYaw(true, true, true, false, false, true));
+        CHECK(!msf::ShouldRestoreHalfRateFirstPersonYaw(true, false, false, false, false, true));
     }
 
     void TestSampledLoggingPolicy()
@@ -259,8 +302,10 @@ int main()
 {
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
         { "transform and runtime gates", TestTransformAndRuntimeGates },
+        { "bow aim mouse deltas use sampled X and current engine Y", TestBowAimMouseDeltasUseSampledXAndCurrentEngineY },
         { "live compatibility policy updates", TestLiveCompatibilityPolicyUpdates },
-        { "half-rate sprint yaw restoration", TestHalfRateSprintYawRestoration },
+        { "half-rate yaw restoration", TestHalfRateYawRestoration },
+        { "half-rate yaw eligibility includes bow aim", TestHalfRateYawEligibilityIncludesBowAim },
         { "sampled logging policy", TestSampledLoggingPolicy },
         { "config load, clamp, save, and reload", TestConfigLoadClampSaveAndReload },
         { "compatibility presets can be disabled", TestCompatibilityPresetCanBeDisabled },

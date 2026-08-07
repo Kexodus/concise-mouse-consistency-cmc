@@ -16,11 +16,25 @@ namespace msf
         SmoothingRemoval
     };
 
-    float RestoreHalfRateSprintYawDelta(
+    float RestoreHalfRateYawDelta(
         float postSensitivityLookX,
         float deltaSeconds,
         float engineYawDelta,
         bool eligible) noexcept;
+    bool ShouldRestoreHalfRateFirstPersonYaw(
+        bool enabled,
+        bool hotDisabled,
+        bool firstPersonHookEnabled,
+        bool inThirdPerson,
+        bool sprinting,
+        bool bowAiming) noexcept;
+    std::pair<float, float> ApplyBowAimMouseDeltas(
+        float rawPixelX,
+        float engineDeltaX,
+        float engineDeltaY,
+        float sampledScaleX,
+        float bowXMultiplier,
+        float bowYMultiplier) noexcept;
     bool ShouldEmitSampledLog(
         bool enabled,
         std::uint64_t count,
@@ -44,13 +58,13 @@ namespace msf
         bool RegisterHookPoint(HookRegistrationPoint point);
         bool InstallLookHandlerMouseMoveHook();
         void RemoveLookHandlerMouseMoveHook();
-        bool InstallPlayerSprintYawHook();
-        void RemovePlayerSprintYawHook();
+        bool InstallPlayerYawHook();
+        void RemovePlayerYawHook();
         bool InstallThirdPersonSmoothingHook();
         void RemoveThirdPersonSmoothingHook();
         bool _installed{ false };
         bool _firstPersonRegistered{ false };
-        bool _playerSprintYawRegistered{ false };
+        bool _playerYawRegistered{ false };
         bool _smoothingRemovalRegistered{ false };
         mutable std::mutex _policyLock;
         CompatibilityPolicy _activePolicy{};
