@@ -130,11 +130,48 @@ namespace
 
     void TestSampledScaleUpdatesOnlyFromTrueFreelook()
     {
-        CHECK(msf::ShouldUpdateFreelookSampledScale(false, false, false));
-        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, false, false));
-        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, true, false));
-        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, true, true));
-        CHECK(!msf::ShouldUpdateFreelookSampledScale(false, false, true));
+        CHECK(msf::ShouldUpdateFreelookSampledScale(false, true, false, false));
+        CHECK(msf::ShouldUpdateFreelookSampledScale(true, true, false, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, false, false, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, false, true, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, false, true, true));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(false, true, false, true));
+    }
+
+    void TestFreelookScaleSamplesRejectConsumedAndOutlierInput()
+    {
+        float scale = 0.0F;
+        float pending = 0.0F;
+        std::uint32_t pendingCount = 0;
+
+        CHECK(!msf::UpdateFreelookScaleSample(1.0F, 10.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, 0.0F));
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 4.0F, scale, pending, pendingCount));
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 4.0F, scale, pending, pendingCount));
+        CHECK(msf::UpdateFreelookScaleSample(4.0F, 4.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, 1.0F));
+
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 0.0F, scale, pending, pendingCount));
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, -4.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, 1.0F));
+        CHECK(pendingCount == 1);
+        CHECK(msf::UpdateFreelookScaleSample(4.0F, 4.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, 1.0F));
+        CHECK(pendingCount == 0);
+
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, -4.0F, scale, pending, pendingCount));
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, -4.0F, scale, pending, pendingCount));
+        CHECK(msf::UpdateFreelookScaleSample(4.0F, -4.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, -1.0F));
+
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 16.0F, scale, pending, pendingCount));
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 16.0F, scale, pending, pendingCount));
+        CHECK(msf::UpdateFreelookScaleSample(4.0F, 16.0F, scale, pending, pendingCount));
+        CHECK(Near(scale, 4.0F));
+
+        CHECK(!msf::UpdateFreelookScaleSample(4.0F, 80.0F, scale, pending, pendingCount));
+        CHECK(!msf::UpdateFreelookScaleSample(0.5F, 0.5F, scale, pending, pendingCount));
+        CHECK(Near(scale, 4.0F));
     }
 
     void TestNormalAimFovUpdatesOnlyFromFreelook()
@@ -146,12 +183,13 @@ namespace
         CHECK(!msf::ShouldUpdateNormalAimFov(false, false, false, 0.0F));
     }
 
-    void TestVerticalFovDegreesFromFrustum()
+    void TestFovDegreesFromFrustumEdges()
     {
-        // fTop/fNear = tan(halfAngle). For 90° vertical FOV, half=45°, tan=1 → fTop==fNear.
-        CHECK(Near(msf::VerticalFovDegreesFromFrustum(1.0F, 1.0F), 90.0F));
-        CHECK(Near(msf::VerticalFovDegreesFromFrustum(0.0F, 1.0F), 0.0F));
-        CHECK(Near(msf::VerticalFovDegreesFromFrustum(1.0F, 0.0F), 0.0F));
+        // Symmetric tangent slopes of +1 and -1 represent ±45°, or a 90° field of view.
+        CHECK(Near(msf::FovDegreesFromFrustumEdges(1.0F, -1.0F), 90.0F));
+        CHECK(Near(msf::FovDegreesFromFrustumEdges(0.5F, -0.5F), 53.1301F));
+        CHECK(Near(msf::FovDegreesFromFrustumEdges(0.0F, 0.0F), 0.0F));
+        CHECK(Near(msf::FovDegreesFromFrustumEdges(-1.0F, 1.0F), 0.0F));
     }
 
     void TestLiveCompatibilityPolicyUpdates()
@@ -338,8 +376,9 @@ int main()
         { "bow aim mouse deltas use sampled X and current engine Y", TestBowAimMouseDeltasUseSampledXAndCurrentEngineY },
         { "bow aim Y preserves configured axis parity", TestBowAimVerticalMultiplierPreservesConfiguredAxisParity },
         { "sampled scale updates only from true freelook", TestSampledScaleUpdatesOnlyFromTrueFreelook },
+        { "freelook scale samples reject consumed and outlier input", TestFreelookScaleSamplesRejectConsumedAndOutlierInput },
         { "normal aim FOV updates only from freelook", TestNormalAimFovUpdatesOnlyFromFreelook },
-        { "vertical FOV from NiFrustum tan ratio", TestVerticalFovDegreesFromFrustum },
+        { "FOV degrees from NiFrustum tangent edges", TestFovDegreesFromFrustumEdges },
         { "live compatibility policy updates", TestLiveCompatibilityPolicyUpdates },
         { "half-rate yaw restoration", TestHalfRateYawRestoration },
         { "half-rate yaw eligibility includes bow aim", TestHalfRateYawEligibilityIncludesBowAim },

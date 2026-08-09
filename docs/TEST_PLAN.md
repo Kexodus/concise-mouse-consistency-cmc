@@ -10,7 +10,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 - Confirm half-rate yaw tests cover the `0.48..0.52` correction window, both yaw directions, boundary values, nearby non-matching scales, sprint and bow eligibility, disabled eligibility, zero input, and zero frame delta.
 - Confirm bow Y tests preserve Skyrim's current engine delta and apply only the configured bow and mouse Y multipliers.
 - Confirm rendered FOV never adds an automatic Eagle Eye Y multiplier; the configured bow Y value remains unchanged across zoom transitions.
-- Confirm the sampled X baseline updates only in true freelook and rejects bow-out, bow-aim, and zoom-transition frames.
+- Confirm first- and third-person sampled X baselines are isolated, update only in true freelook, reject ranged/zoom transitions and isolated invalid samples, and require three consistent candidates before a legitimate sign or scale change can reseed the cache.
 - Confirm normal-FOV baseline tests reject bow-out, bow-aim, zoomed, and invalid-FOV samples.
 - Confirm sampled-log tests cover disabled logging, zero counts/intervals, first-correction emission, and before/exact/after interval boundaries.
 

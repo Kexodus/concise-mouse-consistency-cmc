@@ -95,22 +95,22 @@ namespace msf
             }
         }
 
-        bool IsRangedWeaponDrawn(RE::PlayerCharacter* player) noexcept
+        RE::TESObjectWEAP* GetEquippedRangedWeapon(RE::PlayerCharacter* player) noexcept
         {
-            if (!IsWeaponDrawnRelocated(player)) {
-                return false;
+            if (!player) {
+                return nullptr;
             }
             auto* object = player->GetEquippedObject(false);
             auto* weapon = object ? skyrim_cast<RE::TESObjectWEAP*>(object) : nullptr;
             if (!weapon) {
-                return false;
+                return nullptr;
             }
             switch (weapon->GetWeaponType()) {
             case RE::WEAPON_TYPE::kBow:
             case RE::WEAPON_TYPE::kCrossbow:
-                return true;
+                return weapon;
             default:
-                return false;
+                return nullptr;
             }
         }
 
@@ -132,6 +132,7 @@ namespace msf
         std::string g_lastCameraState{ "Unknown" };
         std::string g_lastAimState{ "freelook" };
         std::string g_previousAimState{ "freelook" };
+        bool g_lastTrueFreelookEligible{ false };
         bool g_lastBowAim{ false };
         bool g_lastBowZoomedIn{ false };
         bool g_lastRenderedZoomedIn{ false };
@@ -177,9 +178,24 @@ namespace msf
 
         // Sampled scale: ratio of lookInputVec units per raw mouse pixel at baseline sensitivity.
         // Updated via EMA during normal play only (not during bow aim) to stay uncontaminated.
-        float g_sampledScaleX{ 0.0f };
-        float g_sampledScaleY{ 0.0f };
-        constexpr float kScaleEmaAlpha = 0.15f;
+        struct FreelookScaleAxisState
+        {
+            float value{ 0.0F };
+            float pendingValue{ 0.0F };
+            std::uint32_t pendingCount{ 0 };
+        };
+
+        struct FreelookScaleCache
+        {
+            FreelookScaleAxisState x;
+            FreelookScaleAxisState y;
+            const RE::NiNode* cameraRoot{ nullptr };
+        };
+
+        FreelookScaleCache g_firstPersonSampledScale;
+        FreelookScaleCache g_thirdPersonSampledScale;
+        float g_lastSampledScaleX{ 0.0F };
+        float g_lastSampledScaleY{ 0.0F };
         float g_normalAimFov{ 0.0f };
         const RE::NiNode* g_lastAimFovCameraRoot{ nullptr };
         bool g_lastAimFovThirdPerson{ false };
@@ -260,8 +276,8 @@ namespace msf
             sample.top = frustum.fTop;
             sample.bottom = frustum.fBottom;
             sample.nearPlane = frustum.fNear;
-            sample.vFovDegrees = VerticalFovDegreesFromFrustum(frustum.fTop, frustum.fNear);
-            sample.hFovDegrees = VerticalFovDegreesFromFrustum(frustum.fRight, frustum.fNear);
+            sample.vFovDegrees = FovDegreesFromFrustumEdges(frustum.fTop, frustum.fBottom);
+            sample.hFovDegrees = FovDegreesFromFrustumEdges(frustum.fRight, frustum.fLeft);
 
             if (auto* fps = skyrim_cast<RE::FirstPersonState*>(camera->currentState.get())) {
                 if (fps->firstPersonFOVControl) {
@@ -312,7 +328,7 @@ namespace msf
                 ",T=" + std::to_string(g_lastFrustumTop) +
                 ",B=" + std::to_string(g_lastFrustumBottom) +
                 ",N=" + std::to_string(g_lastFrustumNear) + ")" +
-                " sampledScale=(" + std::to_string(g_sampledScaleX) + "," + std::to_string(g_sampledScaleY) + ")" +
+                " sampledScale=(" + std::to_string(g_lastSampledScaleX) + "," + std::to_string(g_lastSampledScaleY) + ")" +
                 " bowAimFrames=" + std::to_string(g_bowAimMouseFrames) +
                 " eagleEyeFrames=" + std::to_string(g_eagleEyeMouseFrames));
         }
@@ -349,7 +365,7 @@ namespace msf
                 " rawPx=(" + std::to_string(g_lastRawPixelX) + "," + std::to_string(g_lastRawPixelY) + ")" +
                 " engine=(" + std::to_string(g_lastEngineX) + "," + std::to_string(g_lastEngineY) + ")" +
                 " out=(" + std::to_string(g_lastOutX) + "," + std::to_string(g_lastOutY) + ")" +
-                " sampledScale=(" + std::to_string(g_sampledScaleX) + "," + std::to_string(g_sampledScaleY) + ")" +
+                " sampledScale=(" + std::to_string(g_lastSampledScaleX) + "," + std::to_string(g_lastSampledScaleY) + ")" +
                 " camera=" + g_lastCameraState);
         }
 
@@ -423,7 +439,7 @@ namespace msf
                     (std::abs(lookInput.x) >= 0.01F) ? (rotationData.z / lookInput.x) : 0.0F;
                 const std::string state = g_lastAimState;
 
-                if (state == "freelook" && !sprinting) {
+                if (g_lastTrueFreelookEligible && !sprinting) {
                     if (std::abs(lookInput.x) >= 0.01F) {
                         g_freelookYawPerLook = (g_freelookYawPerLook == 0.0F)
                             ? yawPerLook
@@ -538,7 +554,11 @@ namespace msf
             g_lastEngineY = data->lookInputVec.y;
 
             const bool isBowAim = DetectBowAim(player);
-            const bool bowOut = IsRangedWeaponDrawn(player);
+            const bool rangedWeaponEquipped = GetEquippedRangedWeapon(player) != nullptr;
+            const auto weaponState = player ? GetWeaponStateRelocated(player) : RE::WEAPON_STATE::kSheathed;
+            const bool weaponFullySheathed = weaponState == RE::WEAPON_STATE::kSheathed;
+            const bool rangedWeaponActive = rangedWeaponEquipped && !weaponFullySheathed;
+            const bool bowOut = rangedWeaponEquipped && IsWeaponDrawnRelocated(player);
             const bool bowZoomFlag = camera && camera->bowZoomedIn;
 
             float baseAimFov = 0.0F;
@@ -568,7 +588,7 @@ namespace msf
                 // Only true freelook is a safe baseline. During zoom exit, bowZoomedIn can
                 // clear before the rendered frustum expands; bowOut/bowPull frames must not
                 // replace the normal denominator with that transitional narrow FOV.
-                if (ShouldUpdateNormalAimFov(bowOut, isBowAim, bowZoomFlag, currentAimFov)) {
+                if (ShouldUpdateNormalAimFov(rangedWeaponActive, isBowAim, bowZoomFlag, currentAimFov)) {
                     g_normalAimFov = currentAimFov;
                 }
                 renderedZoomedIn =
@@ -582,18 +602,36 @@ namespace msf
             // Update sampled scale only during true freelook.
             // Tracks the engine's pixels-to-lookInputVec ratio at baseline sensitivity.
             // Bow-out and zoom-transition frames cannot replace the normal baseline.
-            if (ShouldUpdateFreelookSampledScale(bowOut, isBowAim, bowZoomFlag)) {
-                if (std::abs(rawPixelX) >= 1.0f) {
-                    const float kX = data->lookInputVec.x / rawPixelX;
-                    g_sampledScaleX = (g_sampledScaleX == 0.0f)
-                        ? kX : g_sampledScaleX + kScaleEmaAlpha * (kX - g_sampledScaleX);
-                }
-                if (std::abs(rawPixelY) >= 1.0f) {
-                    const float kY = data->lookInputVec.y / rawPixelY;
-                    g_sampledScaleY = (g_sampledScaleY == 0.0f)
-                        ? kY : g_sampledScaleY + kScaleEmaAlpha * (kY - g_sampledScaleY);
-                }
+            auto& sampledScale = inThirdPerson
+                ? g_thirdPersonSampledScale
+                : g_firstPersonSampledScale;
+            const auto* currentCameraRoot = camera ? camera->cameraRoot.get() : nullptr;
+            if (sampledScale.cameraRoot != currentCameraRoot) {
+                sampledScale = {};
+                sampledScale.cameraRoot = currentCameraRoot;
             }
+            const bool trueFreelookEligible = ShouldUpdateFreelookSampledScale(
+                    rangedWeaponEquipped,
+                    weaponFullySheathed,
+                    isBowAim,
+                    bowZoomFlag);
+            if (trueFreelookEligible) {
+                UpdateFreelookScaleSample(
+                    rawPixelX,
+                    data->lookInputVec.x,
+                    sampledScale.x.value,
+                    sampledScale.x.pendingValue,
+                    sampledScale.x.pendingCount);
+                UpdateFreelookScaleSample(
+                    rawPixelY,
+                    data->lookInputVec.y,
+                    sampledScale.y.value,
+                    sampledScale.y.pendingValue,
+                    sampledScale.y.pendingCount);
+            }
+            g_lastSampledScaleX = sampledScale.x.value;
+            g_lastSampledScaleY = sampledScale.y.value;
+            g_lastTrueFreelookEligible = trueFreelookEligible;
 
             float deltaX = data->lookInputVec.x;
             float deltaY = data->lookInputVec.y;
@@ -627,7 +665,7 @@ namespace msf
                     rawPixelX,
                     deltaX,
                     deltaY,
-                    g_sampledScaleX,
+                    sampledScale.x.value,
                     bowX,
                     bowY);
             } else if (bowOut) {
@@ -840,29 +878,95 @@ namespace msf
     }
 
     bool ShouldUpdateFreelookSampledScale(
-        bool bowOut,
+        bool rangedWeaponEquipped,
+        bool weaponFullySheathed,
         bool bowAiming,
         bool bowZoomFlag) noexcept
     {
-        return !bowOut && !bowAiming && !bowZoomFlag;
+        return !bowAiming && !bowZoomFlag &&
+               (!rangedWeaponEquipped || weaponFullySheathed);
+    }
+
+    bool UpdateFreelookScaleSample(
+        float rawPixelDelta,
+        float engineDelta,
+        float& currentScale,
+        float& pendingScale,
+        std::uint32_t& pendingCount) noexcept
+    {
+        if (!std::isfinite(rawPixelDelta) || !std::isfinite(engineDelta) ||
+            std::abs(rawPixelDelta) < 1.0F || std::abs(engineDelta) < 0.00001F) {
+            return false;
+        }
+
+        const float candidate = engineDelta / rawPixelDelta;
+        constexpr float kMinimumMagnitude = 0.00001F;
+        constexpr float kMaximumMagnitude = 16.0F;
+        constexpr float kSampleEmaAlpha = 0.15F;
+        if (!std::isfinite(candidate) ||
+            std::abs(candidate) < kMinimumMagnitude ||
+            std::abs(candidate) > kMaximumMagnitude) {
+            return false;
+        }
+
+        const auto samplesAreConsistent = [](float lhs, float rhs) noexcept {
+            if (!std::isfinite(lhs) || !std::isfinite(rhs) ||
+                std::abs(lhs) < kMinimumMagnitude ||
+                std::abs(rhs) < kMinimumMagnitude ||
+                lhs * rhs <= 0.0F) {
+                return false;
+            }
+            const float relativeMagnitude = std::abs(lhs / rhs);
+            return relativeMagnitude >= 0.5F && relativeMagnitude <= 2.0F;
+        };
+
+        if (!std::isfinite(currentScale)) {
+            currentScale = 0.0F;
+        }
+        if (currentScale != 0.0F && samplesAreConsistent(candidate, currentScale)) {
+            currentScale += kSampleEmaAlpha * (candidate - currentScale);
+            pendingScale = 0.0F;
+            pendingCount = 0;
+            return true;
+        }
+
+        if (pendingCount == 0 || !samplesAreConsistent(candidate, pendingScale)) {
+            pendingScale = candidate;
+            pendingCount = 1;
+            return false;
+        }
+
+        pendingScale += kSampleEmaAlpha * (candidate - pendingScale);
+        ++pendingCount;
+        constexpr std::uint32_t kSamplesRequiredToSeed = 3;
+        if (pendingCount < kSamplesRequiredToSeed) {
+            return false;
+        }
+
+        currentScale = pendingScale;
+        pendingScale = 0.0F;
+        pendingCount = 0;
+        return true;
     }
 
     bool ShouldUpdateNormalAimFov(
-        bool bowOut,
+        bool rangedWeaponActive,
         bool bowAiming,
         bool bowZoomFlag,
         float renderedFovDegrees) noexcept
     {
-        return renderedFovDegrees > 0.0F && !bowOut && !bowAiming && !bowZoomFlag;
+        return renderedFovDegrees > 0.0F &&
+               !rangedWeaponActive && !bowAiming && !bowZoomFlag;
     }
 
-    float VerticalFovDegreesFromFrustum(float fTop, float fNear) noexcept
+    float FovDegreesFromFrustumEdges(float positiveEdge, float negativeEdge) noexcept
     {
-        if (!(fTop > 0.0F) || !(fNear > 0.0F)) {
+        if (!std::isfinite(positiveEdge) || !std::isfinite(negativeEdge) ||
+            !(positiveEdge > negativeEdge)) {
             return 0.0F;
         }
         constexpr float kRadiansToDegrees = 180.0F / std::numbers::pi_v<float>;
-        return 2.0F * std::atan(fTop / fNear) * kRadiansToDegrees;
+        return (std::atan(positiveEdge) - std::atan(negativeEdge)) * kRadiansToDegrees;
     }
 
     bool ShouldRestoreHalfRateFirstPersonYaw(
@@ -925,6 +1029,7 @@ namespace msf
         g_lastCameraState = "Unknown";
         g_lastAimState = "freelook";
         g_previousAimState = "freelook";
+        g_lastTrueFreelookEligible = false;
         g_lastBowAim = false;
         g_lastBowZoomedIn = false;
         g_lastRenderedZoomedIn = false;
@@ -948,6 +1053,10 @@ namespace msf
         g_wasBowZoomedIn = false;
         g_loggedEagleEyeFovNarrowed = false;
         g_freelookYawPerLook = 0.0F;
+        g_firstPersonSampledScale = {};
+        g_thirdPersonSampledScale = {};
+        g_lastSampledScaleX = 0.0F;
+        g_lastSampledScaleY = 0.0F;
         g_normalAimFov = 0.0F;
         g_lastAimFovCameraRoot = nullptr;
         g_lastAimFovThirdPerson = false;
