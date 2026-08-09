@@ -121,6 +121,39 @@ namespace
         CHECK(Near(currentY, -3.0F));
     }
 
+    void TestBowAimVerticalMultiplierPreservesConfiguredAxisParity()
+    {
+        CHECK(Near(msf::CalculateBowAimVerticalMultiplier(false, 0.75F), 1.0F));
+        CHECK(Near(msf::CalculateBowAimVerticalMultiplier(true, 0.75F), 0.75F));
+        CHECK(Near(msf::CalculateBowAimVerticalMultiplier(true, 1.0F), 1.0F));
+    }
+
+    void TestSampledScaleUpdatesOnlyFromTrueFreelook()
+    {
+        CHECK(msf::ShouldUpdateFreelookSampledScale(false, false, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, false, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, true, false));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(true, true, true));
+        CHECK(!msf::ShouldUpdateFreelookSampledScale(false, false, true));
+    }
+
+    void TestNormalAimFovUpdatesOnlyFromFreelook()
+    {
+        CHECK(msf::ShouldUpdateNormalAimFov(false, false, false, 3.604575F));
+        CHECK(!msf::ShouldUpdateNormalAimFov(true, false, false, 3.340328F));
+        CHECK(!msf::ShouldUpdateNormalAimFov(true, true, false, 2.003606F));
+        CHECK(!msf::ShouldUpdateNormalAimFov(true, true, true, 2.003606F));
+        CHECK(!msf::ShouldUpdateNormalAimFov(false, false, false, 0.0F));
+    }
+
+    void TestVerticalFovDegreesFromFrustum()
+    {
+        // fTop/fNear = tan(halfAngle). For 90° vertical FOV, half=45°, tan=1 → fTop==fNear.
+        CHECK(Near(msf::VerticalFovDegreesFromFrustum(1.0F, 1.0F), 90.0F));
+        CHECK(Near(msf::VerticalFovDegreesFromFrustum(0.0F, 1.0F), 0.0F));
+        CHECK(Near(msf::VerticalFovDegreesFromFrustum(1.0F, 0.0F), 0.0F));
+    }
+
     void TestLiveCompatibilityPolicyUpdates()
     {
         TemporaryDirectory directory;
@@ -303,6 +336,10 @@ int main()
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
         { "transform and runtime gates", TestTransformAndRuntimeGates },
         { "bow aim mouse deltas use sampled X and current engine Y", TestBowAimMouseDeltasUseSampledXAndCurrentEngineY },
+        { "bow aim Y preserves configured axis parity", TestBowAimVerticalMultiplierPreservesConfiguredAxisParity },
+        { "sampled scale updates only from true freelook", TestSampledScaleUpdatesOnlyFromTrueFreelook },
+        { "normal aim FOV updates only from freelook", TestNormalAimFovUpdatesOnlyFromFreelook },
+        { "vertical FOV from NiFrustum tan ratio", TestVerticalFovDegreesFromFrustum },
         { "live compatibility policy updates", TestLiveCompatibilityPolicyUpdates },
         { "half-rate yaw restoration", TestHalfRateYawRestoration },
         { "half-rate yaw eligibility includes bow aim", TestHalfRateYawEligibilityIncludesBowAim },

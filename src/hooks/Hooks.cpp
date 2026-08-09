@@ -11,15 +11,21 @@
 
 #if MSF_USE_COMMONLIBSSE
 #include <RE/A/Actor.h>
+#include <RE/A/ActorState.h>
 #include <RE/C/ControlMap.h>
+#include <RE/F/FirstPersonState.h>
 #include <RE/L/LookHandler.h>
 #include <RE/M/MouseMoveEvent.h>
+#include <RE/N/NiCamera.h>
+#include <RE/N/NiNode.h>
 #include <RE/N/NiPoint2.h>
 #include <RE/Offsets_VTABLE.h>
 #include <RE/P/PlayerCamera.h>
 #include <RE/P/PlayerCharacter.h>
 #include <RE/P/PlayerControls.h>
 #include <RE/P/PlayerControlsData.h>
+#include <RE/RTTI.h>
+#include <RE/T/TESObjectWEAP.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
 #include <RE/U/UI.h>
@@ -67,6 +73,47 @@ namespace msf
             return static_cast<bool>(as1.sprinting);
         }
 
+        RE::WEAPON_STATE GetWeaponStateRelocated(const RE::PlayerCharacter* player) noexcept
+        {
+            const auto& as2 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState2>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC4, 0xCC);
+            return as2.weaponState;
+        }
+
+        bool IsWeaponDrawnRelocated(const RE::PlayerCharacter* player) noexcept
+        {
+            if (!player) {
+                return false;
+            }
+            switch (GetWeaponStateRelocated(player)) {
+            case RE::WEAPON_STATE::kDrawn:
+            case RE::WEAPON_STATE::kWantToSheathe:
+            case RE::WEAPON_STATE::kSheathing:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool IsRangedWeaponDrawn(RE::PlayerCharacter* player) noexcept
+        {
+            if (!IsWeaponDrawnRelocated(player)) {
+                return false;
+            }
+            auto* object = player->GetEquippedObject(false);
+            auto* weapon = object ? skyrim_cast<RE::TESObjectWEAP*>(object) : nullptr;
+            if (!weapon) {
+                return false;
+            }
+            switch (weapon->GetWeaponType()) {
+            case RE::WEAPON_TYPE::kBow:
+            case RE::WEAPON_TYPE::kCrossbow:
+                return true;
+            default:
+                return false;
+            }
+        }
+
         ProcessThumbstickFn g_originalProcessThumbstick{ nullptr };
         ProcessMouseMoveFn g_originalProcessMouseMove{ nullptr };
         PlayerModifyMovementDataFn g_originalPlayerModifyMovementData{ nullptr };
@@ -76,11 +123,40 @@ namespace msf
         std::uint64_t g_lookHookCallsFirstPerson{ 0 };
         std::uint64_t g_lookHookCallsThirdPerson{ 0 };
         std::uint64_t g_lookTransformAppliedCount{ 0 };
-        float g_lastRawX{ 0.0F };
-        float g_lastRawY{ 0.0F };
+        float g_lastRawPixelX{ 0.0F };
+        float g_lastRawPixelY{ 0.0F };
+        float g_lastEngineX{ 0.0F };
+        float g_lastEngineY{ 0.0F };
         float g_lastOutX{ 0.0F };
         float g_lastOutY{ 0.0F };
         std::string g_lastCameraState{ "Unknown" };
+        std::string g_lastAimState{ "freelook" };
+        std::string g_previousAimState{ "freelook" };
+        bool g_lastBowAim{ false };
+        bool g_lastBowZoomedIn{ false };
+        bool g_lastRenderedZoomedIn{ false };
+        bool g_lastBowOut{ false };
+        float g_lastBaseAimFov{ 0.0F };
+        float g_lastNormalAimFovLogged{ 0.0F };
+        float g_lastCurrentAimFov{ 0.0F };
+        float g_lastCurrentHFov{ 0.0F };
+        float g_lastFrustumLeft{ 0.0F };
+        float g_lastFrustumRight{ 0.0F };
+        float g_lastFrustumTop{ 0.0F };
+        float g_lastFrustumBottom{ 0.0F };
+        float g_lastFrustumNear{ 0.0F };
+        float g_lastFovControlScale{ 0.0F };
+        float g_lastEagleEyeY{ 1.0F };
+        float g_lastBowY{ 1.0F };
+        std::uint64_t g_bowAimMouseFrames{ 0 };
+        std::uint64_t g_eagleEyeMouseFrames{ 0 };
+        std::uint64_t g_sensitivityProbeCount{ 0 };
+        std::uint64_t g_rotationProbeCount{ 0 };
+        bool g_wasBowZoomedIn{ false };
+        bool g_loggedEagleEyeFovNarrowed{ false };
+        float g_freelookYawPerLook{ 0.0F };
+        constexpr float kLookRatioEmaAlpha = 0.15F;
+        constexpr std::uint64_t kSensitivityProbeInterval = 120;
 
         std::uint64_t g_thumbstickHookCallsTotal{ 0 };
         std::uint64_t g_thumbstickTransformAppliedCount{ 0 };
@@ -104,6 +180,10 @@ namespace msf
         float g_sampledScaleX{ 0.0f };
         float g_sampledScaleY{ 0.0f };
         constexpr float kScaleEmaAlpha = 0.15f;
+        float g_normalAimFov{ 0.0f };
+        const RE::NiNode* g_lastAimFovCameraRoot{ nullptr };
+        bool g_lastAimFovThirdPerson{ false };
+        bool g_hasAimFovCameraIdentity{ false };
 
         // Returns true when the player is actively drawing or aiming with a bow or crossbow.
         // Uses relocated ActorState::GetAttackState() range kBowDraw..kBowNextAttack.
@@ -116,9 +196,134 @@ namespace msf
                    attackState <= RE::ATTACK_STATE_ENUM::kBowNextAttack;
         }
 
-        void LogLookHookCountersIfNeeded(const ConfigValues& config)
+        const char* ClassifyAimState(bool bowOut, bool bowAim, bool bowZoomedIn) noexcept
         {
-            if (!ShouldEmitSampledLog(config.verboseLogging, g_lookHookCallsTotal, kLookLogInterval)) {
+            if (bowAim && bowZoomedIn) {
+                return "eagleEye";
+            }
+            if (bowAim) {
+                return "bowPull";
+            }
+            if (bowOut) {
+                return "bowOut";
+            }
+            return "freelook";
+        }
+
+        struct RenderedFovSample
+        {
+            float vFovDegrees{ 0.0F };
+            float hFovDegrees{ 0.0F };
+            float left{ 0.0F };
+            float right{ 0.0F };
+            float top{ 0.0F };
+            float bottom{ 0.0F };
+            float nearPlane{ 0.0F };
+            float fovControlScale{ 0.0F };
+        };
+
+        // Eagle Eye narrows NiCamera::viewFrustum; PlayerCamera::firstPersonFOV stays at the
+        // configured base (often unchanged under Improved Camera).
+        RenderedFovSample ReadRenderedFov(RE::PlayerCamera* camera) noexcept
+        {
+            RenderedFovSample sample{};
+            if (!camera || !camera->cameraRoot) {
+                return sample;
+            }
+
+            auto* root = camera->cameraRoot.get();
+            if (!root) {
+                return sample;
+            }
+
+            auto& children = root->GetChildren();
+            if (children.empty()) {
+                return sample;
+            }
+
+            RE::NiCamera* niCamera = nullptr;
+            for (auto& child : children) {
+                if (child) {
+                    niCamera = skyrim_cast<RE::NiCamera*>(child.get());
+                    if (niCamera) {
+                        break;
+                    }
+                }
+            }
+            if (!niCamera) {
+                return sample;
+            }
+
+            const auto& frustum = niCamera->GetRuntimeData2().viewFrustum;
+            sample.left = frustum.fLeft;
+            sample.right = frustum.fRight;
+            sample.top = frustum.fTop;
+            sample.bottom = frustum.fBottom;
+            sample.nearPlane = frustum.fNear;
+            sample.vFovDegrees = VerticalFovDegreesFromFrustum(frustum.fTop, frustum.fNear);
+            sample.hFovDegrees = VerticalFovDegreesFromFrustum(frustum.fRight, frustum.fNear);
+
+            if (auto* fps = skyrim_cast<RE::FirstPersonState*>(camera->currentState.get())) {
+                if (fps->firstPersonFOVControl) {
+                    sample.fovControlScale = fps->firstPersonFOVControl->local.scale;
+                }
+            }
+            return sample;
+        }
+
+        void LogSensitivityProbeIfNeeded(const ConfigValues& config, bool force)
+        {
+            if (!config.verboseLogging) {
+                return;
+            }
+            ++g_sensitivityProbeCount;
+            if (!force &&
+                !ShouldEmitSampledLog(true, g_sensitivityProbeCount, kSensitivityProbeInterval, true)) {
+                return;
+            }
+
+            const float outOverEngineY =
+                (std::abs(g_lastEngineY) > 0.0001F) ? (g_lastOutY / g_lastEngineY) : 0.0F;
+            const float fovRatio =
+                (g_lastNormalAimFovLogged > 0.0F) ? (g_lastCurrentAimFov / g_lastNormalAimFovLogged) : 0.0F;
+
+            LogInfo(
+                "SensitivityProbe"
+                " state=" + g_lastAimState +
+                " camera=" + g_lastCameraState +
+                " bowOut=" + std::to_string(g_lastBowOut ? 1 : 0) +
+                " bowAim=" + std::to_string(g_lastBowAim ? 1 : 0) +
+                " bowZoomFlag=" + std::to_string(g_lastBowZoomedIn ? 1 : 0) +
+                " renderedZoom=" + std::to_string(g_lastRenderedZoomedIn ? 1 : 0) +
+                " rawPx=(" + std::to_string(g_lastRawPixelX) + "," + std::to_string(g_lastRawPixelY) + ")" +
+                " engine=(" + std::to_string(g_lastEngineX) + "," + std::to_string(g_lastEngineY) + ")" +
+                " out=(" + std::to_string(g_lastOutX) + "," + std::to_string(g_lastOutY) + ")" +
+                " outOverEngineY=" + std::to_string(outOverEngineY) +
+                " eagleEyeY=" + std::to_string(g_lastEagleEyeY) +
+                " bowY=" + std::to_string(g_lastBowY) +
+                " baseFov=" + std::to_string(g_lastBaseAimFov) +
+                " normalFov=" + std::to_string(g_lastNormalAimFovLogged) +
+                " currentFov=" + std::to_string(g_lastCurrentAimFov) +
+                " currentHFov=" + std::to_string(g_lastCurrentHFov) +
+                " fovRatio=" + std::to_string(fovRatio) +
+                " fovCtrlScale=" + std::to_string(g_lastFovControlScale) +
+                " frustum=(L=" + std::to_string(g_lastFrustumLeft) +
+                ",R=" + std::to_string(g_lastFrustumRight) +
+                ",T=" + std::to_string(g_lastFrustumTop) +
+                ",B=" + std::to_string(g_lastFrustumBottom) +
+                ",N=" + std::to_string(g_lastFrustumNear) + ")" +
+                " sampledScale=(" + std::to_string(g_sampledScaleX) + "," + std::to_string(g_sampledScaleY) + ")" +
+                " bowAimFrames=" + std::to_string(g_bowAimMouseFrames) +
+                " eagleEyeFrames=" + std::to_string(g_eagleEyeMouseFrames));
+        }
+
+        void LogLookHookCountersIfNeeded(const ConfigValues& config, bool force = false)
+        {
+            if (!force &&
+                !ShouldEmitSampledLog(config.verboseLogging, g_lookHookCallsTotal, kLookLogInterval)) {
+                return;
+            }
+            if (force && !config.verboseLogging) {
                 return;
             }
 
@@ -128,8 +333,22 @@ namespace msf
                 " firstPerson=" + std::to_string(g_lookHookCallsFirstPerson) +
                 " thirdPerson=" + std::to_string(g_lookHookCallsThirdPerson) +
                 " transformed=" + std::to_string(g_lookTransformAppliedCount) +
-                " lastRaw=(" + std::to_string(g_lastRawX) + "," + std::to_string(g_lastRawY) + ")" +
-                " lastOut=(" + std::to_string(g_lastOutX) + "," + std::to_string(g_lastOutY) + ")" +
+                " state=" + g_lastAimState +
+                " bowAimFrames=" + std::to_string(g_bowAimMouseFrames) +
+                " eagleEyeFrames=" + std::to_string(g_eagleEyeMouseFrames) +
+                " bowAim=" + std::to_string(g_lastBowAim ? 1 : 0) +
+                " bowZoomFlag=" + std::to_string(g_lastBowZoomedIn ? 1 : 0) +
+                " renderedZoom=" + std::to_string(g_lastRenderedZoomedIn ? 1 : 0) +
+                " baseFov=" + std::to_string(g_lastBaseAimFov) +
+                " normalFov=" + std::to_string(g_lastNormalAimFovLogged) +
+                " currentFov=" + std::to_string(g_lastCurrentAimFov) +
+                " frustumTop=" + std::to_string(g_lastFrustumTop) +
+                " frustumNear=" + std::to_string(g_lastFrustumNear) +
+                " eagleEyeY=" + std::to_string(g_lastEagleEyeY) +
+                " bowY=" + std::to_string(g_lastBowY) +
+                " rawPx=(" + std::to_string(g_lastRawPixelX) + "," + std::to_string(g_lastRawPixelY) + ")" +
+                " engine=(" + std::to_string(g_lastEngineX) + "," + std::to_string(g_lastEngineY) + ")" +
+                " out=(" + std::to_string(g_lastOutX) + "," + std::to_string(g_lastOutY) + ")" +
                 " sampledScale=(" + std::to_string(g_sampledScaleX) + "," + std::to_string(g_sampledScaleY) + ")" +
                 " camera=" + g_lastCameraState);
         }
@@ -194,6 +413,41 @@ namespace msf
                         " engineYaw=" + std::to_string(engineYawDelta) +
                         " restoredYaw=" + std::to_string(rotationData.z) +
                         " lookX=" + std::to_string(lookInput.x) +
+                        " delta=" + std::to_string(delta));
+                }
+            }
+
+            if (config.verboseLogging && !inThirdPerson &&
+                (std::abs(lookInput.x) >= 0.01F || std::abs(lookInput.y) >= 0.01F)) {
+                const float yawPerLook =
+                    (std::abs(lookInput.x) >= 0.01F) ? (rotationData.z / lookInput.x) : 0.0F;
+                const std::string state = g_lastAimState;
+
+                if (state == "freelook" && !sprinting) {
+                    if (std::abs(lookInput.x) >= 0.01F) {
+                        g_freelookYawPerLook = (g_freelookYawPerLook == 0.0F)
+                            ? yawPerLook
+                            : g_freelookYawPerLook + kLookRatioEmaAlpha * (yawPerLook - g_freelookYawPerLook);
+                    }
+                }
+
+                ++g_rotationProbeCount;
+                if (ShouldEmitSampledLog(true, g_rotationProbeCount, kSensitivityProbeInterval, true)) {
+                    const float yawRatioToFreelook =
+                        (std::abs(g_freelookYawPerLook) > 0.000001F && std::abs(lookInput.x) >= 0.01F)
+                        ? (yawPerLook / g_freelookYawPerLook)
+                        : 0.0F;
+                    LogInfo(
+                        "YawRotation"
+                        " state=" + state +
+                        " sprinting=" + std::to_string(sprinting ? 1 : 0) +
+                        " yawCorrected=" + std::to_string(yawCorrected ? 1 : 0) +
+                        " look=(" + std::to_string(lookInput.x) + "," + std::to_string(lookInput.y) + ")" +
+                        " rotYawEngine=" + std::to_string(engineYawDelta) +
+                        " rotYawOut=" + std::to_string(rotationData.z) +
+                        " yawPerLook=" + std::to_string(yawPerLook) +
+                        " freelookYawPerLook=" + std::to_string(g_freelookYawPerLook) +
+                        " yawRatioToFreelook=" + std::to_string(yawRatioToFreelook) +
                         " delta=" + std::to_string(delta));
                 }
             }
@@ -278,16 +532,57 @@ namespace msf
                 return;
             }
 
-            g_lastRawX = data->lookInputVec.x;
-            g_lastRawY = data->lookInputVec.y;
+            g_lastRawPixelX = rawPixelX;
+            g_lastRawPixelY = rawPixelY;
+            g_lastEngineX = data->lookInputVec.x;
+            g_lastEngineY = data->lookInputVec.y;
 
             const bool isBowAim = DetectBowAim(player);
+            const bool bowOut = IsRangedWeaponDrawn(player);
+            const bool bowZoomFlag = camera && camera->bowZoomedIn;
 
-            // Update sampled scale only during normal (non-bow-aim) play.
+            float baseAimFov = 0.0F;
+            float currentAimFov = 0.0F;
+            RenderedFovSample rendered{};
+            bool renderedZoomedIn = false;
+            if (reloadedConfig.verboseLogging) {
+                // Eagle Eye narrows NiCamera::viewFrustum. PlayerCamera::firstPersonFOV /
+                // worldFOV are configured base values and often stay fixed (esp. with IC).
+                baseAimFov = camera
+                    ? (inThirdPerson ? camera->worldFOV : camera->firstPersonFOV)
+                    : 0.0F;
+                rendered = ReadRenderedFov(camera);
+                currentAimFov =
+                    rendered.vFovDegrees > 0.0F ? rendered.vFovDegrees : baseAimFov;
+
+                const auto* cameraRoot = camera ? camera->cameraRoot.get() : nullptr;
+                if (!g_hasAimFovCameraIdentity ||
+                    cameraRoot != g_lastAimFovCameraRoot ||
+                    inThirdPerson != g_lastAimFovThirdPerson) {
+                    g_normalAimFov = 0.0F;
+                    g_lastAimFovCameraRoot = cameraRoot;
+                    g_lastAimFovThirdPerson = inThirdPerson;
+                    g_hasAimFovCameraIdentity = true;
+                }
+
+                // Only true freelook is a safe baseline. During zoom exit, bowZoomedIn can
+                // clear before the rendered frustum expands; bowOut/bowPull frames must not
+                // replace the normal denominator with that transitional narrow FOV.
+                if (ShouldUpdateNormalAimFov(bowOut, isBowAim, bowZoomFlag, currentAimFov)) {
+                    g_normalAimFov = currentAimFov;
+                }
+                renderedZoomedIn =
+                    isBowAim &&
+                    g_normalAimFov > 0.0F &&
+                    currentAimFov > 0.0F &&
+                    (currentAimFov / g_normalAimFov) < 0.98F;
+            }
+            const bool effectiveBowZoomedIn = isBowAim && (bowZoomFlag || renderedZoomedIn);
+
+            // Update sampled scale only during true freelook.
             // Tracks the engine's pixels-to-lookInputVec ratio at baseline sensitivity.
-            // Excluded during bow aim to prevent contamination by the engine's bow-zoom
-            // attenuation, which produces a smaller ratio for the same raw pixel delta.
-            if (!isBowAim) {
+            // Bow-out and zoom-transition frames cannot replace the normal baseline.
+            if (ShouldUpdateFreelookSampledScale(bowOut, isBowAim, bowZoomFlag)) {
                 if (std::abs(rawPixelX) >= 1.0f) {
                     const float kX = data->lookInputVec.x / rawPixelX;
                     g_sampledScaleX = (g_sampledScaleX == 0.0f)
@@ -303,10 +598,23 @@ namespace msf
             float deltaX = data->lookInputVec.x;
             float deltaY = data->lookInputVec.y;
 
+            float eagleEyeY = 1.0F;
+            float bowY = 1.0F;
             if (isBowAim) {
-                g_lastCameraState = inThirdPerson ? "ThirdPerson_BowAim" : "FirstPerson_BowAim";
+                ++g_bowAimMouseFrames;
+                if (effectiveBowZoomedIn) {
+                    ++g_eagleEyeMouseFrames;
+                }
+                g_lastCameraState = inThirdPerson
+                    ? (effectiveBowZoomedIn ? "ThirdPerson_EagleEye" : "ThirdPerson_BowAim")
+                    : (effectiveBowZoomedIn ? "FirstPerson_EagleEye" : "FirstPerson_BowAim");
                 const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
-                const float bowY = static_cast<float>(reloadedConfig.bowAimMouseYMultiplier);
+                bowY = CalculateBowAimVerticalMultiplier(
+                    true,
+                    static_cast<float>(reloadedConfig.bowAimMouseYMultiplier));
+                // Rendered FOV is diagnostic only. Eagle Eye must preserve the configured
+                // freelook-equivalent Y response instead of scaling it by the zoom ratio.
+                eagleEyeY = 1.0F;
                 // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
                 // scale, then apply bowX relative to that baseline. Falls back to the
                 // engine delta if the scale is not yet seeded.
@@ -322,6 +630,8 @@ namespace msf
                     g_sampledScaleX,
                     bowX,
                     bowY);
+            } else if (bowOut) {
+                g_lastCameraState = inThirdPerson ? "ThirdPerson_BowOut" : "FirstPerson_BowOut";
             }
 
             const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
@@ -330,9 +640,42 @@ namespace msf
             ++g_lookTransformAppliedCount;
             g_lastOutX = outX;
             g_lastOutY = outY;
+            g_lastBowAim = isBowAim;
+            g_lastBowZoomedIn = bowZoomFlag;
+            g_lastRenderedZoomedIn = renderedZoomedIn;
+            g_lastBowOut = bowOut;
+            g_lastBaseAimFov = baseAimFov;
+            g_lastNormalAimFovLogged = g_normalAimFov;
+            g_lastCurrentAimFov = currentAimFov;
+            g_lastCurrentHFov = rendered.hFovDegrees;
+            g_lastFrustumLeft = rendered.left;
+            g_lastFrustumRight = rendered.right;
+            g_lastFrustumTop = rendered.top;
+            g_lastFrustumBottom = rendered.bottom;
+            g_lastFrustumNear = rendered.nearPlane;
+            g_lastFovControlScale = rendered.fovControlScale;
+            g_lastEagleEyeY = eagleEyeY;
+            g_lastBowY = isBowAim ? bowY : 1.0F;
+            g_lastAimState = ClassifyAimState(bowOut, isBowAim, effectiveBowZoomedIn);
             data->lookInputVec.x = outX;
             data->lookInputVec.y = outY;
-            LogLookHookCountersIfNeeded(reloadedConfig);
+
+            const bool stateChanged = g_lastAimState != g_previousAimState;
+            const bool eagleEyeEntered = effectiveBowZoomedIn && !g_wasBowZoomedIn;
+            const bool fovIsNarrowed = renderedZoomedIn;
+            const bool eagleEyeFovNarrowed = fovIsNarrowed && !g_loggedEagleEyeFovNarrowed;
+            if (fovIsNarrowed) {
+                g_loggedEagleEyeFovNarrowed = true;
+            }
+            if (!effectiveBowZoomedIn) {
+                g_loggedEagleEyeFovNarrowed = false;
+            }
+            g_wasBowZoomedIn = effectiveBowZoomedIn;
+            g_previousAimState = g_lastAimState;
+
+            const bool forceProbe = stateChanged || eagleEyeEntered || eagleEyeFovNarrowed;
+            LogSensitivityProbeIfNeeded(reloadedConfig, forceProbe);
+            LogLookHookCountersIfNeeded(reloadedConfig, eagleEyeEntered || stateChanged);
         }
 
         void ProcessThumbstickHook(RE::LookHandler* handler, RE::ThumbstickEvent* event, RE::PlayerControlsData* data)
@@ -489,6 +832,39 @@ namespace msf
         return { outputX, engineDeltaY * bowYMultiplier };
     }
 
+    float CalculateBowAimVerticalMultiplier(
+        bool bowAiming,
+        float configuredBowYMultiplier) noexcept
+    {
+        return bowAiming ? configuredBowYMultiplier : 1.0F;
+    }
+
+    bool ShouldUpdateFreelookSampledScale(
+        bool bowOut,
+        bool bowAiming,
+        bool bowZoomFlag) noexcept
+    {
+        return !bowOut && !bowAiming && !bowZoomFlag;
+    }
+
+    bool ShouldUpdateNormalAimFov(
+        bool bowOut,
+        bool bowAiming,
+        bool bowZoomFlag,
+        float renderedFovDegrees) noexcept
+    {
+        return renderedFovDegrees > 0.0F && !bowOut && !bowAiming && !bowZoomFlag;
+    }
+
+    float VerticalFovDegreesFromFrustum(float fTop, float fNear) noexcept
+    {
+        if (!(fTop > 0.0F) || !(fNear > 0.0F)) {
+            return 0.0F;
+        }
+        constexpr float kRadiansToDegrees = 180.0F / std::numbers::pi_v<float>;
+        return 2.0F * std::atan(fTop / fNear) * kRadiansToDegrees;
+    }
+
     bool ShouldRestoreHalfRateFirstPersonYaw(
         bool enabled,
         bool hotDisabled,
@@ -540,11 +916,42 @@ namespace msf
         g_lookHookCallsFirstPerson = 0;
         g_lookHookCallsThirdPerson = 0;
         g_lookTransformAppliedCount = 0;
-        g_lastRawX = 0.0F;
-        g_lastRawY = 0.0F;
+        g_lastRawPixelX = 0.0F;
+        g_lastRawPixelY = 0.0F;
+        g_lastEngineX = 0.0F;
+        g_lastEngineY = 0.0F;
         g_lastOutX = 0.0F;
         g_lastOutY = 0.0F;
         g_lastCameraState = "Unknown";
+        g_lastAimState = "freelook";
+        g_previousAimState = "freelook";
+        g_lastBowAim = false;
+        g_lastBowZoomedIn = false;
+        g_lastRenderedZoomedIn = false;
+        g_lastBowOut = false;
+        g_lastBaseAimFov = 0.0F;
+        g_lastNormalAimFovLogged = 0.0F;
+        g_lastCurrentAimFov = 0.0F;
+        g_lastCurrentHFov = 0.0F;
+        g_lastFrustumLeft = 0.0F;
+        g_lastFrustumRight = 0.0F;
+        g_lastFrustumTop = 0.0F;
+        g_lastFrustumBottom = 0.0F;
+        g_lastFrustumNear = 0.0F;
+        g_lastFovControlScale = 0.0F;
+        g_lastEagleEyeY = 1.0F;
+        g_lastBowY = 1.0F;
+        g_bowAimMouseFrames = 0;
+        g_eagleEyeMouseFrames = 0;
+        g_sensitivityProbeCount = 0;
+        g_rotationProbeCount = 0;
+        g_wasBowZoomedIn = false;
+        g_loggedEagleEyeFovNarrowed = false;
+        g_freelookYawPerLook = 0.0F;
+        g_normalAimFov = 0.0F;
+        g_lastAimFovCameraRoot = nullptr;
+        g_lastAimFovThirdPerson = false;
+        g_hasAimFovCameraIdentity = false;
         g_lastMouseEventTime = {};
         return true;
 #else
