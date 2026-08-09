@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MouseSensitivityFix
-    VERSION 0.1.2
+    VERSION 0.1.3
     LANGUAGES CXX
 )
 
@@ -46,7 +46,9 @@ if(MSF_BUILD_PLUGIN)
         PRIVATE CommonLibSSE::CommonLibSSE
     )
     target_compile_definitions(${PROJECT_NAME}
-        PRIVATE MSF_USE_COMMONLIBSSE=1
+        PRIVATE
+            MSF_USE_COMMONLIBSSE=1
+            MSF_PLUGIN_VERSION="${PROJECT_VERSION}"
     )
     if(MSVC)
         target_compile_options(${PROJECT_NAME}

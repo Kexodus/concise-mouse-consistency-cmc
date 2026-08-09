@@ -31,7 +31,7 @@ cp "build-commonlib/Release/MouseSensitivityFix.dll" "$DEPLOY/"
 
 ```
 
-The source `dist/` INI and normal deployed copy keep `bVerboseLogging=false`. Turn it on temporarily only when sampled hook counters are needed, then turn it off before packaging or normal play. Check `MouseSensitivityFix.log` after launch for clean startup.
+The source `dist/` INI and normal deployed copy keep `bVerboseLogging=false`. Turn it on temporarily only when sampled hook counters or rendered-frustum diagnostics are needed, then turn it off before packaging or normal play. Check `MouseSensitivityFix.log` after launch for clean startup and the expected `BuildIdentity` line.
 
 Dependency-free tests run with the `unit-tests` configure/build/test presets. CI runs those tests on Windows and Linux, then performs a full Windows plugin build, test, package, and artifact upload. In-game validation remains manual per `docs/TEST_PLAN.md` and is recorded in `docs/RUNTIME_VALIDATION.md`.
 
@@ -55,7 +55,7 @@ All hooks use `REL::Relocation` (CommonLibSSE-NG) to patch vtables — no hardco
 | `PlayerCharacter::ModifyMovementData` | +0x11A | Selective first-person sprint yaw restoration |
 | `ThirdPersonState::HandleLookInput` | +0x0F | Smoothing removal |
 
-Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call.
+Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. During bow aim, the mouse path first reconstructs X from raw pixels and the camera-specific freelook sample while preserving the current engine Y delta; rendered FOV remains diagnostic only. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call.
 
 Transform: `out = delta * globalSensitivity * axisMultiplier`. `ApplyTransform` takes an `isGamepad` bool to select mouse or gamepad multipliers (`mouseX/Y` vs `gamepadX/Y`).
 

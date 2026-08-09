@@ -6,6 +6,9 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Rendered Eagle Eye frustum read without camera mods (2026-08-09)
+The `0.1.2` diagnostic DLL loaded with `ImprovedCamera=no SmoothCam=no` and captured a stable first-person Eagle Eye contraction in the active `NiCamera` frustum. The original diagnostic incorrectly divided the tangent-plane edges by `fNear`, producing values `3.604575` and `2.003606` with ratio `0.555851`. Correct edge-angle conversion yields approximately `50.53°` and `29.40°`, with angular ratio `0.582`. The camera scan now uses checked RTTI across the root's children. The frustum is useful for state and transition diagnostics, but its ratio must not scale mouse input.
+
 ### Final first-person bow yaw correction and live Y delta (2026-08-07)
 Bow draw and Eagle Eye use the same final-stage `0.5` yaw scale previously confirmed during sprinting. Extending the guarded `PlayerCharacter::ModifyMovementData` correction to relocated bow attack states restored full horizontal sensitivity only when the observed scale was within `0.48..0.52`.
 
@@ -16,7 +19,7 @@ The bow Y path now preserves Skyrim's current engine delta instead of rebuilding
 
 The selective `0.48..0.52` scale check corrected 560/560 active sprint half-rate frames, left 66/66 sprint-tagged full-rate transition frames untouched, and left 278/278 normal frames untouched on Skyrim `1.6.1170`. Corrected output matched final player yaw within `0.000001` radians. The user confirmed the sprinting X-axis feel matched normal first-person look.
 
-The proof-only per-frame movement, camera matrix, and prior-frame input telemetry was removed after validation. Production verbose logging retains low-frequency counters only.
+The proof-only per-frame movement, camera matrix, and prior-frame input telemetry was removed after validation. Production verbose logging retains low-frequency counters plus sampled sensitivity, yaw, and rendered-frustum diagnostics.
 
 ### Third-person hooks work alongside IC + SmoothCam (2026-04-04)
 With both ImprovedCameraSE v1.1.2.4228 and SmoothCam active (compatibility presets disabled), the original three CMC input/camera hooks installed and fired correctly on Skyrim 1.6.1170.0:
@@ -32,11 +35,13 @@ Alt-tab out, wait >350ms, alt-tab back — first event zeroed (`camera=FocusSpik
 ### EMA sampled scale converges correctly (2026-04-04)
 `sampledScaleX` → 1.0, `sampledScaleY` → -1.0. The -1.0 on Y is correct — the engine inverts Y axis (positive raw pixel → negative `lookInputVec.y`). CMC still uses the sampled X scale to reconstruct the normal horizontal baseline during bow aim. The original sampled-Y reconstruction was later removed because it could become stale and bypass live sensitivity changes; bow Y now preserves the current engine delta.
 
+First- and third-person caches are isolated because camera mods can use different pixels-to-look scales. Sampling rejects ranged draw/zoom transitions, consumed zero-output events, and implausible outliers. An isolated sign or scale anomaly cannot poison the EMA; three mutually consistent candidates are required to seed or deliberately reseed after a legitimate input-scale change.
+
 ### Relocated ActorState access for AE 1.6.629+ (2026-04-04)
 Using `REL::RelocateMemberIfNewer` to read `ActorState1` (SE offset 0xC0, AE offset 0xC8) and `ActorState2` (SE 0xC4, AE 0xCC) directly from the `PlayerCharacter` pointer fixes bow detection on AE runtimes. Confirmed working on 1.6.1170.0: `atkState` cycles through real values (8=kBowDraw, 9=kBowAttached, 10=kBowDrawn, 12=kBowReleased), `wpnDrawn` toggles correctly, `bowDiag` fires on every frame during aim. This is the correct pattern for any `ActorState` field access in a multi-runtime NG build.
 
 ### Engine input-stage deltas are 1:1 during bow aim (2026-04-04)
-Added diagnostic logging of raw OS pixels (`rawPx`), engine output (`engine`), and bow multipliers (`bowMul`). Result: `|rawPx.X| == |engine.X|` and `|rawPx.Y| == |engine.Y|` on every frame — engine only inverts Y sign, no per-axis attenuation. This is identical between freelook and bow aim. If Y feels more sensitive during bow aim, it's FOV asymmetry (vertical FOV narrower than horizontal), not engine scaling. Use `fBowAimMouseYMultiplier < 1.0` to compensate.
+Added diagnostic logging of raw OS pixels (`rawPx`), engine output (`engine`), and bow multipliers (`bowMul`). Result: `|rawPx.X| == |engine.X|` and `|rawPx.Y| == |engine.Y|` on every frame — engine only inverts Y sign, no per-axis attenuation. This is identical between freelook and bow aim. The later 2026-08-09 A/B test established that the requested freelook-equivalent target keeps `fBowAimMouseYMultiplier=1.0`; scaling Y by the visual FOV ratio was the wrong response target.
 
 This finding describes the input hook only. Skyrim later applies a separate `0.5` horizontal scale at final player rotation during bow aim; CMC corrects that downstream stage without reconstructing Y.
 
@@ -51,6 +56,33 @@ IC reads these passively via its own `IsAiming()` helper. Any bow detection fail
 ---
 
 ## Doesn't Work
+
+### Gating Eagle Eye correction only on `PlayerCamera::bowZoomedIn` (2026-08-09)
+The playtest captured six sampled `bowPull` events with a still-zoomed rendered frustum (`fovRatio=0.56..0.57`) after `bowZoomedIn` had cleared. This proves the flag does not describe the full visual transition. Use the live frustum when diagnosing zoom entry/exit; neither the flag nor the frustum should gate an input multiplier.
+
+### Caching normal FOV while a ranged weapon remains out (2026-08-09)
+On zoom exit, `bowZoomedIn` and bow aim cleared before the frustum fully expanded. The old cache condition accepted a `bowOut` sample at `3.340328` as the new normal, replacing the true `3.604575` baseline. Any diagnostic normal rendered FOV may only be sampled in true freelook: no ranged weapon out, no bow aim, and no zoom flag.
+
+### Automatic Eagle Eye vertical FOV multiplier (2026-08-09)
+Scaling bow Y by the rendered FOV ratio targets screen-space angular motion, not the requested freelook-equivalent mouse response, and makes X/Y use different targets. The discarded build used the legacy frustum proxy ratio (`2.003606 / 3.604575 = 0.555851`); correcting the diagnostic angle conversion changes the reported ratio, not this design conclusion. In the follow-up playtest, the normal-FOV baseline was deliberately absent because the bow began already drawn, so the multiplier stayed at `1.0`; the user confirmed both axes then felt correct. Preserve the configured bow Y multiplier across Eagle Eye and retain FOV only as diagnostics.
+
+### First-person pitch from `PlayerCharacter::ModifyMovementData::rotationData.x` (2026-08-09)
+Every freelook, bow, and Eagle Eye `SensRotation` record reported `rotPitch=0` even during deliberate vertical sweeps. The follow-up `RenderedRotation` probe also reported zero pitch from the active `NiCamera` world matrix while yaw changed. Neither source carries rendered first-person pitch, so the misleading pitch-ratio telemetry was removed.
+
+### Eagle Eye Y via `PlayerCamera::firstPersonFOV` alone (2026-08-08)
+Diagnostic build confirmed `bowZoomedIn=1` / `FirstPerson_EagleEye` while the user saw a real RMB zoom. Logged `normalFov`/`currentFov` both stayed `110` because those values came from `PlayerCamera::firstPersonFOV`, which remained at the configured base value in the tested vanilla camera stack. Live zoom is on `NiCamera::viewFrustum`; convert its tangent edges with `atan(top) - atan(bottom)` vertically and `atan(right) - atan(left)` horizontally. Read the frustum for diagnostics and keep `firstPersonFOV` only as `baseFov` diagnostics; the later A/B test rejected applying either value as an automatic input multiplier.
+
+### Eagle Eye multiplier degrees/radians heuristic (2026-08-08)
+During the discarded automatic-scaling experiment, playtest logged `normalFov=5.117778` → `currentFov=3.008229` but `eagleEyeY=1.0`. `CalculateEagleEyeVerticalMultiplier` treated values `> pi` as degrees and `<= pi` as radians, so the pair was mixed and clamped to 1. Interpreting both as degrees fixed that experiment, but the entire FOV multiplier was later removed after the behavioral A/B test.
+
+### Why prior logs could not prove bow/Eagle Eye 1:1 (2026-08-08)
+Missing evidence, not proof of success:
+1. No freelook baseline (`yawPerLook` / `pitchPerLook`) to compare against bow-out / bow-pull / eagle-eye.
+2. No distinct `bowOut` vs `bowPull` state tags.
+3. `lastRaw==lastOut` only proves CMC passthrough, not equal world angle per mouse move.
+4. Eagle Eye samples often logged `bowZoomedIn=1` while `currentFov≈normalFov` (zoom flag before frustum settles, or zoom never applied that frame), so `eagleEyeY` stayed 1.0 with no FOV-narrowed capture.
+
+Added `SensitivityProbe` (rawPx/engine/out/state/fov/frustum) and `YawRotation` (look vs final yaw and ratio to the freelook EMA), forced on state changes and the first FOV-narrowed Eagle Eye frame. The attempted pitch fields were later removed because neither tested rotation source carried first-person pitch.
 
 ### `kIronSights` camera state fallback for bow aim detection (2026-04-04)
 CMC's `DetectBowAim()` falls back to checking `camera->currentState->id == RE::CameraStates::kIronSights`. This never fires — bow aiming in first-person stays in `kFirstPerson` camera state (with or without IC). The IronSights state is not used for bow aim. This fallback should be removed.

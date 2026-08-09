@@ -8,7 +8,10 @@ Project: **Concise Mouse Consistency (CMC)**.
 - Run the same tests against the full dependency graph with `ctest --preset plugin-release`.
 - Confirm tests cover transforms, runtime gates, live compatibility-policy changes, INI parsing/clamping/save/reload, case-insensitive DLL detection, and serialized config callbacks.
 - Confirm half-rate yaw tests cover the `0.48..0.52` correction window, both yaw directions, boundary values, nearby non-matching scales, sprint and bow eligibility, disabled eligibility, zero input, and zero frame delta.
-- Confirm bow Y tests preserve Skyrim's current engine delta before applying the configured bow and mouse Y multipliers.
+- Confirm bow Y tests preserve Skyrim's current engine delta and apply only the configured bow and mouse Y multipliers.
+- Confirm rendered FOV never adds an automatic Eagle Eye Y multiplier; the configured bow Y value remains unchanged across zoom transitions.
+- Confirm first- and third-person sampled X baselines are isolated, update only in true freelook, reject ranged/zoom transitions and isolated invalid samples, and require three consistent candidates before a legitimate sign or scale change can reseed the cache.
+- Confirm normal-FOV baseline tests reject bow-out, bow-aim, zoomed, and invalid-FOV samples.
 - Confirm sampled-log tests cover disabled logging, zero counts/intervals, first-correction emission, and before/exact/after interval boundaries.
 
 ## 1) Startup
@@ -25,6 +28,7 @@ Validate in first-person and third-person:
 - horizontal sensitivity remains matched while actively sprinting in first person
 - entering and leaving sprint does not produce a doubled transition frame
 - horizontal and vertical sensitivity remain matched while drawing a bow and during Eagle Eye zoom
+- while entering and leaving Eagle Eye, `eagleEyeY=1.0` and `bowY` stays equal to the configured bow Y multiplier even when `currentFov / normalFov < 0.98`
 - entering and leaving bow aim does not produce a doubled transition frame
 - behavior is stable after save + reload from UI
 

@@ -39,6 +39,7 @@ Minimum checks:
 - Plugin loads cleanly in `MouseSensitivityFix.log`
 - Menu entry appears when SKSE Menu Framework is installed
 - Global sensitivity changes have immediate effect
+- First-person sprint, bow aim, and Eagle Eye keep the expected freelook-equivalent mouse response without doubled transition frames
 - Save/reload in UI persists values to INI
 - Gamepad toggle behaves correctly
 

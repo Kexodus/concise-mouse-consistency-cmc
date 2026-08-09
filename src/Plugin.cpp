@@ -9,6 +9,17 @@
 #include <filesystem>
 #include <string>
 
+#if MSF_USE_COMMONLIBSSE
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#endif
+
+#ifndef MSF_PLUGIN_VERSION
+#define MSF_PLUGIN_VERSION "unknown"
+#endif
+
 namespace
 {
     msf::CompatibilityManager g_compatibilityManager;
@@ -24,6 +35,54 @@ namespace
                          " reason=" + policy.reason);
         }
     }
+
+    void LogBuildIdentity()
+    {
+        // Always-on identity so playtest logs can prove which binary loaded.
+        // Feature markers make runtime behavior explicit even when stale DLLs share a filename.
+        std::string message =
+            std::string("BuildIdentity version=") + MSF_PLUGIN_VERSION +
+            " eagleEyeFovY=0 axisParity=1 renderedFovDiag=1";
+
+#if MSF_USE_COMMONLIBSSE
+        HMODULE module = nullptr;
+        if (GetModuleHandleExA(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCSTR>(&LogBuildIdentity),
+                &module) &&
+            module) {
+            std::wstring modulePath(512, L'\0');
+            bool pathResolved = false;
+            while (modulePath.size() <= 32768) {
+                const DWORD pathLength = GetModuleFileNameW(
+                    module,
+                    modulePath.data(),
+                    static_cast<DWORD>(modulePath.size()));
+                if (pathLength == 0) {
+                    break;
+                }
+                if (pathLength < modulePath.size()) {
+                    modulePath.resize(pathLength);
+                    const auto path = std::filesystem::path(modulePath);
+                    std::error_code ec;
+                    const auto fileSize = std::filesystem::file_size(path, ec);
+                    message += " module=\"" + path.filename().string() + "\"";
+                    if (!ec) {
+                        message += " bytes=" + std::to_string(fileSize);
+                    }
+                    pathResolved = true;
+                    break;
+                }
+                modulePath.resize(modulePath.size() * 2);
+            }
+            if (!pathResolved) {
+                message += " modulePath=unavailable";
+            }
+        }
+#endif
+
+        msf::LogInfo(message);
+    }
 }
 
 namespace msf
@@ -31,6 +90,7 @@ namespace msf
     bool Plugin::Initialize()
     {
         LogInfo("Initializing Concise Mouse Consistency.");
+        LogBuildIdentity();
 
         auto& configManager = ConfigManager::Get();
         const auto iniPath = std::filesystem::path("Data/SKSE/Plugins/MouseSensitivityFix.ini");
