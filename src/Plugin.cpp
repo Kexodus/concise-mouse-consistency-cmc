@@ -39,7 +39,7 @@ namespace
     void LogBuildIdentity()
     {
         // Always-on identity so playtest logs can prove which binary loaded.
-        // Feature markers distinguish diagnostic builds that share the 0.1.2 package version.
+        // Feature markers make runtime behavior explicit even when stale DLLs share a filename.
         std::string message =
             std::string("BuildIdentity version=") + MSF_PLUGIN_VERSION +
             " eagleEyeFovY=0 axisParity=1 renderedFovDiag=1";
@@ -51,16 +51,32 @@ namespace
                 reinterpret_cast<LPCSTR>(&LogBuildIdentity),
                 &module) &&
             module) {
-            char modulePath[MAX_PATH]{};
-            const DWORD pathLength = GetModuleFileNameA(module, modulePath, MAX_PATH);
-            if (pathLength > 0 && pathLength < MAX_PATH) {
-                const auto path = std::filesystem::path(modulePath);
-                std::error_code ec;
-                const auto fileSize = std::filesystem::file_size(path, ec);
-                message += " module=\"" + path.filename().string() + "\"";
-                if (!ec) {
-                    message += " bytes=" + std::to_string(fileSize);
+            std::wstring modulePath(512, L'\0');
+            bool pathResolved = false;
+            while (modulePath.size() <= 32768) {
+                const DWORD pathLength = GetModuleFileNameW(
+                    module,
+                    modulePath.data(),
+                    static_cast<DWORD>(modulePath.size()));
+                if (pathLength == 0) {
+                    break;
                 }
+                if (pathLength < modulePath.size()) {
+                    modulePath.resize(pathLength);
+                    const auto path = std::filesystem::path(modulePath);
+                    std::error_code ec;
+                    const auto fileSize = std::filesystem::file_size(path, ec);
+                    message += " module=\"" + path.filename().string() + "\"";
+                    if (!ec) {
+                        message += " bytes=" + std::to_string(fileSize);
+                    }
+                    pathResolved = true;
+                    break;
+                }
+                modulePath.resize(modulePath.size() * 2);
+            }
+            if (!pathResolved) {
+                message += " modulePath=unavailable";
             }
         }
 #endif
