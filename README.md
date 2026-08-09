@@ -9,6 +9,7 @@ It keeps mouse and gamepad look sensitivity consistent across camera states and 
 - Global sensitivity scaling
 - Independent mouse and gamepad X/Y scaling
 - First-person, third-person, and bow/crossbow aim controls
+- Freelook-equivalent horizontal and vertical mouse response during bow aim and Eagle Eye zoom
 - Selective first-person half-rate yaw correction for sprinting and bow aim that preserves normal and transition frames
 - Optional gamepad look support with right-stick filtering
 - Alt-tab focus-spike suppression
@@ -41,7 +42,7 @@ Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md
 - INI: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 - UI path: `Concise Mouse Consistency/Settings`
 - UI and external INI edits apply without reinstalling hooks or restarting Skyrim
-- Release logging is quiet by default. Set `bVerboseLogging=true` only when collecting sampled hook counters.
+- Release logging is quiet by default. Set `bVerboseLogging=true` only when collecting sampled hook counters and rendered-frustum diagnostics.
 
 ## Validation targets
 
@@ -57,6 +58,9 @@ See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests.
 
 ## Docs
 
+- `CHANGELOG.md`
+- `CLAUDE.md` (contributor and automation guidance)
+- `dist/README.md` (release-package README)
 - `docs/OBJECTIVES.md`
 - `docs/IMPLEMENTATION_PLAN.md`
 - `docs/TECHNICAL_DESIGN.md`

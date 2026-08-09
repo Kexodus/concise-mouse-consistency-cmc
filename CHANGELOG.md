@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3] - 2026-08-09
+
+### Fixed
+
+- Kept Eagle Eye horizontal and vertical mouse response freelook-equivalent instead of scaling vertical input by the rendered zoom ratio.
+- Isolated first- and third-person sensitivity baselines and rejected bow transitions, consumed input, and outliers that could contaminate horizontal reconstruction.
+
+### Changed
+
+- Playtest logs now identify the exact DLL and enabled input behavior, with opt-in rendered-frustum diagnostics for Eagle Eye validation.
+- Made camera diagnostics safer and more accurate with checked traversal, correct frustum edge-angle conversion, and baseline resets when the active camera changes.
+
 ## [0.1.2] - 2026-08-07
 
 ### Fixed

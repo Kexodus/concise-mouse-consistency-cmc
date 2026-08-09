@@ -35,6 +35,26 @@ namespace msf
         float sampledScaleX,
         float bowXMultiplier,
         float bowYMultiplier) noexcept;
+    float CalculateBowAimVerticalMultiplier(
+        bool bowAiming,
+        float configuredBowYMultiplier) noexcept;
+    bool ShouldUpdateFreelookSampledScale(
+        bool rangedWeaponEquipped,
+        bool weaponFullySheathed,
+        bool bowAiming,
+        bool bowZoomFlag) noexcept;
+    bool UpdateFreelookScaleSample(
+        float rawPixelDelta,
+        float engineDelta,
+        float& currentScale,
+        float& pendingScale,
+        std::uint32_t& pendingCount) noexcept;
+    bool ShouldUpdateNormalAimFov(
+        bool rangedWeaponActive,
+        bool bowAiming,
+        bool bowZoomFlag,
+        float renderedFovDegrees) noexcept;
+    float FovDegreesFromFrustumEdges(float positiveEdge, float negativeEdge) noexcept;
     bool ShouldEmitSampledLog(
         bool enabled,
         std::uint64_t count,
