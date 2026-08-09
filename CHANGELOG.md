@@ -9,8 +9,8 @@
 
 ### Changed
 
-- Added always-on build identity and verbose rendered-frustum diagnostics so playtest logs can prove which DLL and input behavior loaded.
-- Hardened camera diagnostics with checked camera traversal, correct frustum edge-angle conversion, and camera-lifecycle baseline resets.
+- Playtest logs now identify the exact DLL and enabled input behavior, with opt-in rendered-frustum diagnostics for Eagle Eye validation.
+- Made camera diagnostics safer and more accurate with checked traversal, correct frustum edge-angle conversion, and baseline resets when the active camera changes.
 
 ## [0.1.2] - 2026-08-07
 

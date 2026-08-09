@@ -30,6 +30,10 @@ CMC has four parts:
 
 Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` to compensate for Skyrim's FoV asymmetry on ultrawide displays.
 
+During bow aim, CMC reconstructs X from raw pixels and a camera-specific freelook sample before applying the configured bow and mouse multipliers. First- and third-person samples are isolated, reset when the camera root changes, update only during true freelook, and require three consistent candidates before an unseeded or changed scale is accepted. Y preserves Skyrim's current engine delta and applies the configured bow and mouse Y multipliers exactly once.
+
+Eagle Eye keeps the same freelook-equivalent input target on both axes. The rendered `NiCamera` frustum is sampled only for verbose diagnostics and never adds an automatic zoom-ratio multiplier.
+
 ## Runtime strategy
 
 - Built with `add_commonlibsse_plugin(...)`
@@ -63,7 +67,7 @@ Current compatibility policy is intentionally narrow:
 
 Compatibility and hook toggles apply immediately. Settings change behavior through atomic gates; they do not mutate hook registrations at runtime.
 
-Verbose logging is off in the release INI. When enabled, it emits low-frequency hook counters and half-rate yaw correction samples, not per-frame camera, matrix, or movement dumps.
+Verbose logging is off in the release INI. When enabled, it emits low-frequency hook counters, sensitivity and yaw samples, rendered-frustum diagnostics, and half-rate yaw correction samples, not per-frame camera, matrix, or movement dumps.
 
 ## Known risks
 

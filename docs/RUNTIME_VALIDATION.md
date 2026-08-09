@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed behavior | Sprint yaw was validated on 2026-08-07. On 2026-08-09, final parity DLL `5253A729...76AAA` loaded cleanly with a seeded freelook baseline. Logs proved CMC applied no extra Y scaling and reconstructed X from the freelook sample throughout rendered zoom; the user confirmed the resulting axis response felt matched. |
+| `1.6.1170` | Steam AE | Passed behavior | Sprint yaw was validated on 2026-08-07. On 2026-08-09, the latest playtested hardening DLL `96A622F8...C0F1` loaded cleanly, rejected bow-transition samples, and retained the seeded freelook baseline through rendered zoom. Logs proved CMC applied no extra Y scaling and preserved its X correction; the user confirmed the resulting axis response felt matched. The final `0.1.3` package retains that correction and awaits a separate startup smoke test. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
 | VR | Steam VR | Pending | No VR runtime is installed in the current test environment. Do not advertise validated VR support until this row passes. |
 
