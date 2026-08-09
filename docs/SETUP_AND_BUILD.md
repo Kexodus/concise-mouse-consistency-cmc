@@ -55,4 +55,4 @@ ctest --preset unit-tests
 3. Check `MouseSensitivityFix.log` for clean startup and all expected hook-install messages.
 4. Follow `docs/TEST_PLAN.md` and record evidence in `docs/RUNTIME_VALIDATION.md`.
 
-The startup log reports four installed behaviors: the combined mouse/gamepad look hooks, first-person half-rate yaw correction, third-person smoothing, and the optional UI bridge. Normal release installs keep `bVerboseLogging=false`. Enable it temporarily only when sampled hook counters are needed.
+The startup log reports the exact DLL version and feature markers in `BuildIdentity`, followed by four installed behaviors: the combined mouse/gamepad look hooks, first-person half-rate yaw correction, third-person smoothing, and the optional UI bridge. Normal release installs keep `bVerboseLogging=false`. Enable it temporarily only when sampled hook counters or rendered-frustum diagnostics are needed.

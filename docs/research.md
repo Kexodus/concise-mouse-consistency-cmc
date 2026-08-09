@@ -19,7 +19,7 @@ The bow Y path now preserves Skyrim's current engine delta instead of rebuilding
 
 The selective `0.48..0.52` scale check corrected 560/560 active sprint half-rate frames, left 66/66 sprint-tagged full-rate transition frames untouched, and left 278/278 normal frames untouched on Skyrim `1.6.1170`. Corrected output matched final player yaw within `0.000001` radians. The user confirmed the sprinting X-axis feel matched normal first-person look.
 
-The proof-only per-frame movement, camera matrix, and prior-frame input telemetry was removed after validation. Production verbose logging retains low-frequency counters only.
+The proof-only per-frame movement, camera matrix, and prior-frame input telemetry was removed after validation. Production verbose logging retains low-frequency counters plus sampled sensitivity, yaw, and rendered-frustum diagnostics.
 
 ### Third-person hooks work alongside IC + SmoothCam (2026-04-04)
 With both ImprovedCameraSE v1.1.2.4228 and SmoothCam active (compatibility presets disabled), the original three CMC input/camera hooks installed and fired correctly on Skyrim 1.6.1170.0:
