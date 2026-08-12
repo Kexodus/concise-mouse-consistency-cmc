@@ -82,42 +82,30 @@ namespace msf
     CompatibilityPolicy CompatibilityManager::EvaluatePolicy(const ConfigValues& config) const
     {
         CompatibilityPolicy policy{};
-        const bool improvedDetected = _improvedCameraDetected;
-        const bool smoothDetected = _smoothCamDetected;
+        const bool cameraModDetected = _improvedCameraDetected || _smoothCamDetected;
 
-        if (!config.useCompatibilityPresets) {
-            policy.reason = "Compatibility presets disabled by user.";
+        if (!cameraModDetected) {
+            policy.mode = CompatibilityMode::Safe;
+            policy.reason = "No known camera stack conflicts detected.";
             return policy;
         }
 
-        if (smoothDetected && config.presetSmoothCam) {
-            policy.mode = CompatibilityMode::ReducedIntervention;
-            if (!config.forceOverrideSmoothCam) {
-                policy.installSmoothingRemovalHooks = false;
-            }
-            if (config.delegateThirdPersonWhenSmoothCam && !config.forceOverrideSmoothCam) {
-                policy.allowThirdPersonSmoothingIntervention = false;
-            }
-            policy.reason = "SmoothCam preset active.";
-        }
-
-        if (improvedDetected && config.presetImprovedCamera) {
-            policy.mode = CompatibilityMode::ReducedIntervention;
-            if (config.delegateThirdPersonWhenImprovedCamera && !config.forceOverrideImprovedCamera) {
-                policy.allowThirdPersonSmoothingIntervention = false;
-            }
-            if (policy.reason.empty()) {
-                policy.reason = "Improved Camera preset active.";
-            } else {
-                policy.reason += " Improved Camera preset active.";
-            }
-        }
-
-        if (!improvedDetected && !smoothDetected) {
+        if (config.keepThirdPersonSmoothingRemovalWithCameraMods) {
             policy.mode = CompatibilityMode::Safe;
-            policy.reason = "No known camera stack conflicts detected.";
+            policy.allowThirdPersonSmoothingIntervention = true;
+            policy.reason = "Camera mod detected; CMC keeps third-person smoothing removal.";
+            return policy;
         }
 
+        policy.mode = CompatibilityMode::ReducedIntervention;
+        policy.allowThirdPersonSmoothingIntervention = false;
+        if (_smoothCamDetected && _improvedCameraDetected) {
+            policy.reason = "SmoothCam and Improved Camera detected; third-person smoothing delegated.";
+        } else if (_smoothCamDetected) {
+            policy.reason = "SmoothCam detected; third-person smoothing delegated.";
+        } else {
+            policy.reason = "Improved Camera detected; third-person smoothing delegated.";
+        }
         return policy;
     }
 

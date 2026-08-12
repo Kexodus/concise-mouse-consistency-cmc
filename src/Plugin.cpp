@@ -42,7 +42,7 @@ namespace
         // Feature markers make runtime behavior explicit even when stale DLLs share a filename.
         std::string message =
             std::string("BuildIdentity version=") + MSF_PLUGIN_VERSION +
-            " eagleEyeFovY=0 axisParity=1 renderedFovDiag=1";
+            " eagleEyeFovBoth=0 axisParity=1 eagleEyeYawTimeComp=1 finalPitchNormalize=3 thirdPersonPitchNormalize=0 bowAimMouseFirstPersonOnly=1 finalPitchTelemetry=1 telemetryVerboseGated=1 renderedFovDiag=1";
 
 #if MSF_USE_COMMONLIBSSE
         HMODULE module = nullptr;

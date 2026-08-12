@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed behavior | Sprint yaw was validated on 2026-08-07. On 2026-08-09, the latest playtested hardening DLL `96A622F8...C0F1` loaded cleanly, rejected bow-transition samples, and retained the seeded freelook baseline through rendered zoom. Logs proved CMC applied no extra Y scaling and preserved its X correction; the user confirmed the resulting axis response felt matched. The final `0.1.3` package retains that correction and awaits a separate startup smoke test. |
+| `1.6.1170` | Steam AE | Passed through `0.1.3`; `0.1.4` pending | Sprint, bow, and pre-slow-time Eagle Eye behavior were validated through the `0.1.3` development series. The `0.1.4` code and package checks pass, but the latest available CMC log contains `eagleEyeFrames=0`; a fresh Eagle Eye run must still prove `timeMult≈0.25`, `timeComp=1`, and `yawRatioToFreelook≈1.0`. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
 | VR | Steam VR | Pending | No VR runtime is installed in the current test environment. Do not advertise validated VR support until this row passes. |
 
@@ -62,6 +62,14 @@ The exact follow-up DLL loaded cleanly on Steam `1.6.1170`. During the initial b
 Release packaging then produced version `0.1.3`. The final DLL is 508,928 bytes with SHA-256 `473549BA3451B1CC31EFCDD9B998D4E3273246299E6FF662902ABE36C65A0605`; the generated `Concise-Mouse-Consistency-0.1.3.zip` has SHA-256 `8A65E4B3C9FE1681E9A96B01331909740F8626F7F50ACE096FA7934A03E43015`. The archive contains only `MouseSensitivityFix.dll`, `MouseSensitivityFix.ini`, `README.md`, and `CHANGELOG.md`; its DLL matches the build output, and its README/CHANGELOG match the committed release sources. The deployed DLL also matches byte-for-byte, and the active INI was preserved.
 
 This final package adds post-playtest defensive hardening: separate first/third-person caches, camera-root resets, ranged-transition exclusion, three-sample seed/reseed validation, corrected diagnostic frustum angles, null-safe player access, and long-path build identity. Both test presets and the final independent source reviews pass. The exact final package has not received a separate in-game smoke test; the user-confirmed Eagle Eye parity evidence above applies to the preceding `96A622F8...C0F1` implementation of the sensitivity correction.
+
+### 2026-08-12 `0.1.4` pre-runtime evidence
+
+The release build composes the guarded half-rate yaw restoration with `1/globalTimeMult` compensation only for finite multipliers in the open interval `(0.05, 0.90)`. Dependency-free and CommonLibSSE-NG release tests pass, including exact boundary/adjacent values and the complete Eagle Eye composition. CPack generated `Concise-Mouse-Consistency-0.1.4.zip` with the intended four files.
+
+- DLL: 523,776 bytes, SHA-256 `42C2EF9D2CA804656CEC416BE9384B56FB0C10922518B373E4418937B9EC8AF6`
+- ZIP: 215,187 bytes, SHA-256 `359A0CCB01AD7F1682CF2C2F81E42410AF1E9EB261821B6E1FA59B41EB13F5FC`
+- Runtime status: pending. The latest available CMC log records no Eagle Eye frames, so it cannot validate the new slow-time branch.
 
 ## Evidence required for a pass
 

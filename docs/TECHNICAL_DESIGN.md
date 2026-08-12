@@ -28,7 +28,7 @@ CMC has four parts:
   - `outY = dy * global * mouseYAxisMultiplier` (or `gamepadYAxisMultiplier`)
 - `ApplyTransform` takes an `isGamepad` bool to select the correct multiplier pair
 
-Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` to compensate for Skyrim's FoV asymmetry on ultrawide displays.
+Default mouse and gamepad axis multipliers are `1.0`. Users can lower `gamepadYAxisMultiplier` if vertical look feels too fast.
 
 During bow aim, CMC reconstructs X from raw pixels and a camera-specific freelook sample before applying the configured bow and mouse multipliers. First- and third-person samples are isolated, reset when the camera root changes, update only during true freelook, and require three consistent candidates before an unseeded or changed scale is accepted. Y preserves Skyrim's current engine delta and applies the configured bow and mouse Y multipliers exactly once.
 
@@ -51,19 +51,19 @@ This keeps live enable/disable and compatibility override changes safe. Vtables 
 
 INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 
-- `[General]` core runtime toggles and sensitivity
-- `[Advanced]` per-device axis multipliers and verbose logging
+- `[General]` core runtime toggles, global sensitivity, per-device axis multipliers, smoothing, focus-spike suppression, and gamepad enablement
+- `[Advanced]` per-camera gates, menu/look-control guards, focus gap, bow multipliers, and verbose logging
 - `iFocusSpikeGapMs` controls focus-regain suppression from 50 to 5000 ms
-- `[Compatibility]` SmoothCam / Improved Camera policy toggles
+- `[Compatibility]` single `bKeepThirdPersonSmoothingRemovalWithCameraMods` toggle
 
 ## Compatibility behavior
 
 Current compatibility policy is intentionally narrow:
 
-- targets SmoothCam + Improved Camera
-- auto-detection drives policy via `_improvedCameraDetected` / `_smoothCamDetected` flags directly; no override fields
-- may delegate third-person smoothing removal to the detected camera mod
-- keeps core sensitivity transform active
+- targets SmoothCam + Improved Camera detection
+- default (`bKeepThirdPersonSmoothingRemovalWithCameraMods=true`): CMC keeps third-person smoothing removal even when those mods are present
+- optional legacy mode (`false`): skip CMC third-person smoothing intervention when SmoothCam or Improved Camera is detected
+- keeps core sensitivity transform active regardless
 
 Compatibility and hook toggles apply immediately. Settings change behavior through atomic gates; they do not mutate hook registrations at runtime.
 

@@ -6,8 +6,21 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Third-person pitch normalization on `freeRotation.y` — disabled (2026-08-10)
+Third person previously only had input transforms plus smoothing removal. A mirror of the first-person pitch normalizer against `freeRotation.y` was tried (`thirdPersonPitchNormalize=1`): calibrate freelook pitch-per-look, then rewrite non-freelook deltas including `bowOut`. **Playtest with IC+SmoothCam + default profile rejected it:** third person with a bow merely equipped/out felt extreme X-low / Y-high. Logs had no verbose samples (`bVerboseLogging=false`) but BuildIdentity confirmed the TP pitch-normalize binary; half-rate yaw restore was already first-person-only; bow multipliers were 1.0. Root cause: TP pitch normalize activated for `bowOut`/`bowPull`/`eagleEye` and forced freelook-equivalent Y while X stayed at the camera-mod/engine rate. Production removes the normalizer and its extra `ThirdPersonState::Update` hook; passive `ThirdPersonFinalAxisResponse` sampling remains in `HandleLookInput`. Bow aim mouse reconstruction is also gated first-person-only (`bowAimMouseFirstPersonOnly=1`). Do not re-enable TP pitch normalize for ranged states without a dedicated IC+SmoothCam A/B.
+
+### Persistent first-person pitch normalization (2026-08-10)
+`FirstPersonState::targetPitchOffset` is normalized against a runtime true-freelook pitch-per-output baseline after three consistent samples. The normalized target persists across vertical, horizontal, and idle updates, so Skyrim's interpolation/clamping cannot overwrite it. In the final verbose playtest, all 1,456 eligible updates were corrected; 204 zero-Y normalized frames held the target exactly (`normalizedTargetPitchDelta=0`) even though Skyrim attempted downstream target changes as large as `12.0906`. Unzoomed bow-pull yaw remained within approximately `0.997..1.007×` the freelook baseline, and the user confirmed those tested states felt correct. Later end-user logs showed that claim does not extend to active Eagle Eye slow-time (see below).
+
+The initial v2 run also showed that continuously adapting the pitch baseline can ingest bow-exit interpolation and temporarily move far outside the true `~0.08` gain. Production v3 therefore freezes the baseline after its initial three-sample true-freelook calibration. This does not remove telemetry; normal deployments keep `bVerboseLogging=false` while the same probes remain available when needed.
+
+### Final first-person pitch target telemetry proves state/FOV-dependent Y gain (2026-08-10)
+Hooking `FirstPersonState::Update` and correlating each mouse event with `targetPitchOffset` finally exposes the downstream vertical response. Across 774 telemetry records, input remained exactly `engineX/rawX=1`, `engineY/rawY=-1`, and CMC output remained 1:1 in every state. Clean one-event vertical samples produced these target-pitch gains per raw pixel: freelook `~0.0808`, bow-out `~0.0794`, unzoomed bow-pull `~0.1034`, and fully settled Eagle Eye (`VFOV < 31°`) `~0.0666`. Therefore unzoomed bow pitch is about `1.28×` freelook, while fully zoomed Eagle Eye pitch is about `0.824×` freelook and `0.645×` unzoomed bow-pull.
+
+Within Eagle Eye, target-pitch gain tracks live rendered VFOV almost perfectly (`correlation=0.999787`): approximately `0.0666` at `29.5°`, `0.0842` at `38.3°`, `0.0915` at `42.2°`, and `0.1004` at `47.2°`. This proves the uneven Y behavior occurs downstream of `LookHandler::ProcessMouseMove` and varies continuously through zoom transitions; it is not caused by CMC applying unequal input multipliers. `currentPitchOffset` follows the target with a per-frame smoothing/step limit, while the `FirstPersonState::GetRotation` quaternion changes consistently with pitch.
+
 ### Rendered Eagle Eye frustum read without camera mods (2026-08-09)
-The `0.1.2` diagnostic DLL loaded with `ImprovedCamera=no SmoothCam=no` and captured a stable first-person Eagle Eye contraction in the active `NiCamera` frustum. The original diagnostic incorrectly divided the tangent-plane edges by `fNear`, producing values `3.604575` and `2.003606` with ratio `0.555851`. Correct edge-angle conversion yields approximately `50.53°` and `29.40°`, with angular ratio `0.582`. The camera scan now uses checked RTTI across the root's children. The frustum is useful for state and transition diagnostics, but its ratio must not scale mouse input.
+The `0.1.2` diagnostic DLL loaded with `ImprovedCamera=no SmoothCam=no` and captured a stable first-person Eagle Eye contraction in the active `NiCamera` frustum. The original diagnostic incorrectly divided the tangent-plane edges by `fNear`, producing values `3.604575` and `2.003606` with ratio `0.555851`. Correct edge-angle conversion yields approximately `50.53°` and `29.40°`, with angular ratio `0.582`. The camera scan now uses checked RTTI across the root's children.
 
 ### Final first-person bow yaw correction and live Y delta (2026-08-07)
 Bow draw and Eagle Eye use the same final-stage `0.5` yaw scale previously confirmed during sprinting. Extending the guarded `PlayerCharacter::ModifyMovementData` correction to relocated bow attack states restored full horizontal sensitivity only when the observed scale was within `0.48..0.52`.
@@ -22,12 +35,12 @@ The selective `0.48..0.52` scale check corrected 560/560 active sprint half-rate
 The proof-only per-frame movement, camera matrix, and prior-frame input telemetry was removed after validation. Production verbose logging retains low-frequency counters plus sampled sensitivity, yaw, and rendered-frustum diagnostics.
 
 ### Third-person hooks work alongside IC + SmoothCam (2026-04-04)
-With both ImprovedCameraSE v1.1.2.4228 and SmoothCam active (compatibility presets disabled), the original three CMC input/camera hooks installed and fired correctly on Skyrim 1.6.1170.0:
+With both ImprovedCameraSE v1.1.2.4228 and SmoothCam active, the original three CMC input/camera hooks installed and fired correctly on Skyrim 1.6.1170.0:
 - `LookHandler::ProcessMouseMove` — transforms applied in both first- and third-person
 - `LookHandler::ProcessThumbstick` — installed successfully
 - `ThirdPersonState::HandleLookInput` — smoothing removal at 100% (`smoothingRemoved=total` at every checkpoint)
 
-No judder, no conflict. IC's MinHook on `NiCamera` and `PlayerCamera` does not interfere with CMC's vtable hooks.
+No judder, no conflict. IC's MinHook on `NiCamera` and `PlayerCamera` does not interfere with CMC's vtable hooks. Product default keeps CMC third-person smoothing removal with camera mods (`bKeepThirdPersonSmoothingRemovalWithCameraMods=true`); set false to restore legacy reduced-intervention (skip CMC 3P smoothing).
 
 ### Focus spike suppression works (2026-04-04)
 Alt-tab out, wait >350ms, alt-tab back — first event zeroed (`camera=FocusSpikeSuppressed`), next event resumes normally. Single-frame suppression is sufficient; no visible camera jerk observed. Tested on 1.6.1170.0 with IC + SmoothCam active.
@@ -57,6 +70,21 @@ IC reads these passively via its own `IsAiming()` helper. Any bow detection fail
 
 ## Doesn't Work
 
+### Third-person freelook-parity pitch normalize with bow out + IC/SmoothCam (2026-08-10)
+Rewriting `ThirdPersonState::freeRotation.y` to freelook pitch-per-look whenever `aimState != freelook` (including `bowOut` with weapon drawn but not aiming) produced goofy asymmetric look under Improved Camera + SmoothCam on the default profile. Do not treat FP pitch-normalize success as proof that the same policy is safe on TP `freeRotation.y`. Keep CMC 3P to input transforms + optional smoothing removal until measured otherwise.
+
+### Eagle Eye slow-time leaves yaw at ~0.25× freelook while pitch normalize stays realtime (2026-08-10)
+End-user `0.1.3` verbose log (`eagleEyeFovBoth=0`, `finalPitchNormalize=3`, IC+SmoothCam, compat presets off). Input stage stayed 1:1 in every state (`outOverEngineY=1`, `eagleEyeY=1`, `bowY=1`). Half-rate bow yaw restore still fired during Eagle Eye (`restoredYaw=2×engineYaw`, observed scale in `0.48..0.52`).
+
+Unzoomed `bowPull` kept `yawRatioToFreelook≈1.00` with `delta≈0.0145`. Active `eagleEye` dropped `delta` to `≈0.003625` (exactly `0.25×`) and `yawRatioToFreelook` locked at `≈0.250` after the half-rate restore — matching vanilla Eagle Eye slow-time, not a failed 0.5→1.0 correction. Final pitch normalize still rewrote `targetPitchOffset` from realtime look Y (`pitchNormalized=1`, `requested=outY×freelookPitchPerLook`), so Y tracks freelook wall-clock gain while X tracks game-time delta.
+
+Net feel: Eagle Eye X ≈ `0.25×` freelook, Y ≈ freelook → strong axis mismatch. Settled EE frustum here was ~`43°` VFOV / `fovRatio≈0.64` with base FOV 100 under IC+SmoothCam.
+
+**Fix (2026-08-10, pending playtest):** After half-rate restore, multiply yaw by `1/BSTimer::GetCurrentGlobalTimeMult()` when the mult is in `(0.05, 0.90)`. That converts game-time yaw to wall-clock freelook equivalence. Build marker: `eagleEyeYawTimeComp=1`. Verbose logs add `timeMult` / `timeComp`. Do not treat pre-fix `yawRatioToFreelook≈0.25` during Eagle Eye as a half-rate-hook failure.
+
+### Both-axes Eagle Eye FOV scaling without final pitch proof (2026-08-10)
+A diagnostic build multiplied both input axes by live `currentVFov/normalVFov`, reaching `0.581687` at full Eagle Eye. NDJSON proved identical input-stage ratios (`outOverEngineX == outOverEngineY`), but the user reported Y then felt less sensitive than X. The same run proved X still receives its downstream half-rate yaw restoration, while no equivalent final pitch measurement existed. The change was removed. Do not apply FOV-based input scaling to either axis until final rendered pitch and yaw response per raw pixel is measured in every state.
+
 ### Gating Eagle Eye correction only on `PlayerCamera::bowZoomedIn` (2026-08-09)
 The playtest captured six sampled `bowPull` events with a still-zoomed rendered frustum (`fovRatio=0.56..0.57`) after `bowZoomedIn` had cleared. This proves the flag does not describe the full visual transition. Use the live frustum when diagnosing zoom entry/exit; neither the flag nor the frustum should gate an input multiplier.
 
@@ -64,10 +92,10 @@ The playtest captured six sampled `bowPull` events with a still-zoomed rendered 
 On zoom exit, `bowZoomedIn` and bow aim cleared before the frustum fully expanded. The old cache condition accepted a `bowOut` sample at `3.340328` as the new normal, replacing the true `3.604575` baseline. Any diagnostic normal rendered FOV may only be sampled in true freelook: no ranged weapon out, no bow aim, and no zoom flag.
 
 ### Automatic Eagle Eye vertical FOV multiplier (2026-08-09)
-Scaling bow Y by the rendered FOV ratio targets screen-space angular motion, not the requested freelook-equivalent mouse response, and makes X/Y use different targets. The discarded build used the legacy frustum proxy ratio (`2.003606 / 3.604575 = 0.555851`); correcting the diagnostic angle conversion changes the reported ratio, not this design conclusion. In the follow-up playtest, the normal-FOV baseline was deliberately absent because the bow began already drawn, so the multiplier stayed at `1.0`; the user confirmed both axes then felt correct. Preserve the configured bow Y multiplier across Eagle Eye and retain FOV only as diagnostics.
+Scaling **only** bow Y by the rendered FOV ratio makes X/Y use different targets and was rejected. The discarded build used the legacy frustum proxy ratio (`2.003606 / 3.604575 = 0.555851`). A follow-up A/B with inactive FOV correction (`normalFov=0`) felt correct and temporarily locked freelook-equivalent parity as the production target. Do not revive Y-only FOV scaling.
 
 ### First-person pitch from `PlayerCharacter::ModifyMovementData::rotationData.x` (2026-08-09)
-Every freelook, bow, and Eagle Eye `SensRotation` record reported `rotPitch=0` even during deliberate vertical sweeps. The follow-up `RenderedRotation` probe also reported zero pitch from the active `NiCamera` world matrix while yaw changed. Neither source carries rendered first-person pitch, so the misleading pitch-ratio telemetry was removed.
+Every freelook, bow, and Eagle Eye `SensRotation` record reported `rotPitch=0` even during deliberate vertical sweeps. The follow-up `RenderedRotation` probe also reported zero pitch from the active `NiCamera` world matrix while yaw changed. A 2026-08-10 `FirstPersonState::Update` run further rejected `firstPersonCameraObj` local/world Euler fields, `PlayerCamera::yaw`, and `rotationInput` for per-update deltas (all zero in 774/774 records). Use `FirstPersonState::targetPitchOffset` for input-to-final-pitch target gain and its `GetRotation` quaternion/current offset for convergence.
 
 ### Eagle Eye Y via `PlayerCamera::firstPersonFOV` alone (2026-08-08)
 Diagnostic build confirmed `bowZoomedIn=1` / `FirstPerson_EagleEye` while the user saw a real RMB zoom. Logged `normalFov`/`currentFov` both stayed `110` because those values came from `PlayerCamera::firstPersonFOV`, which remained at the configured base value in the tested vanilla camera stack. Live zoom is on `NiCamera::viewFrustum`; convert its tangent edges with `atan(top) - atan(bottom)` vertically and `atan(right) - atan(left)` horizontally. Read the frustum for diagnostics and keep `firstPersonFOV` only as `baseFov` diagnostics; the later A/B test rejected applying either value as an automatic input multiplier.

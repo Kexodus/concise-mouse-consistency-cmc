@@ -12,6 +12,7 @@
 #if MSF_USE_COMMONLIBSSE
 #include <RE/A/Actor.h>
 #include <RE/A/ActorState.h>
+#include <RE/B/BSTimer.h>
 #include <RE/C/ControlMap.h>
 #include <RE/F/FirstPersonState.h>
 #include <RE/L/LookHandler.h>
@@ -38,8 +39,7 @@ namespace msf
     namespace
     {
         constexpr std::uint8_t kInputTransformsAllowed = 1U << 0U;
-        constexpr std::uint8_t kSmoothingRemovalAllowed = 1U << 1U;
-        constexpr std::uint8_t kThirdPersonSmoothingAllowed = 1U << 2U;
+        constexpr std::uint8_t kThirdPersonSmoothingAllowed = 1U << 1U;
     }
 
 #if MSF_USE_COMMONLIBSSE
@@ -49,6 +49,8 @@ namespace msf
         using ProcessMouseMoveFn = void (*)(RE::LookHandler*, RE::MouseMoveEvent*, RE::PlayerControlsData*);
         using PlayerModifyMovementDataFn = void (*)(
             RE::PlayerCharacter*, float, RE::NiPoint3&, RE::NiPoint3&);
+        using FirstPersonStateUpdateFn = void (*)(
+            RE::FirstPersonState*, RE::BSTSmartPointer<RE::TESCameraState>&);
         using ThirdPersonHandleLookInputFn = void (*)(RE::ThirdPersonState*, const RE::NiPoint2&);
 
         // ActorState is a base class of Actor at compile-time offset 0xB8 (SE layout).
@@ -117,6 +119,7 @@ namespace msf
         ProcessThumbstickFn g_originalProcessThumbstick{ nullptr };
         ProcessMouseMoveFn g_originalProcessMouseMove{ nullptr };
         PlayerModifyMovementDataFn g_originalPlayerModifyMovementData{ nullptr };
+        FirstPersonStateUpdateFn g_originalFirstPersonStateUpdate{ nullptr };
         ThirdPersonHandleLookInputFn g_originalThirdPersonHandleLookInput{ nullptr };
         HookCoordinator* g_activeCoordinator{ nullptr };
         std::uint64_t g_lookHookCallsTotal{ 0 };
@@ -158,6 +161,35 @@ namespace msf
         float g_freelookYawPerLook{ 0.0F };
         constexpr float kLookRatioEmaAlpha = 0.15F;
         constexpr std::uint64_t kSensitivityProbeInterval = 120;
+        std::uint64_t g_mouseTelemetryEventId{ 0 };
+        std::uint64_t g_firstPersonTelemetryFrame{ 0 };
+        float g_freelookPitchPerLook{ 0.0F };
+        float g_pendingFreelookPitchPerLook{ 0.0F };
+        std::uint32_t g_pendingFreelookPitchSamples{ 0 };
+        std::uint64_t g_pitchNormalizationCount{ 0 };
+        float g_normalizedPitchTarget{ 0.0F };
+        bool g_hasNormalizedPitchTarget{ false };
+
+        struct MouseTelemetryWindow
+        {
+            std::uint64_t firstEventId{ 0 };
+            std::uint64_t lastEventId{ 0 };
+            std::uint64_t eventCount{ 0 };
+            float rawX{ 0.0F };
+            float rawY{ 0.0F };
+            float engineX{ 0.0F };
+            float engineY{ 0.0F };
+            float outX{ 0.0F };
+            float outY{ 0.0F };
+            float normalFov{ 0.0F };
+            float currentVFov{ 0.0F };
+            float currentHFov{ 0.0F };
+            std::string firstState;
+            std::string lastState;
+        };
+
+        std::mutex g_mouseTelemetryLock;
+        MouseTelemetryWindow g_mouseTelemetryWindow;
 
         std::uint64_t g_thumbstickHookCallsTotal{ 0 };
         std::uint64_t g_thumbstickTransformAppliedCount{ 0 };
@@ -384,6 +416,210 @@ namespace msf
                 " smoothingRemoved=" + std::to_string(g_thirdPersonSmoothingAppliedCount));
         }
 
+        struct FirstPersonOrientationSample
+        {
+            float currentPitchOffset{ 0.0F };
+            float targetPitchOffset{ 0.0F };
+            bool cameraPitchOverride{ false };
+            RE::NiQuaternion cameraRotation{};
+            RE::NiPoint3 localEuler{};
+            RE::NiPoint3 worldEuler{};
+            bool hasCameraObject{ false };
+            float playerCameraYaw{ 0.0F };
+            float rotationInputX{ 0.0F };
+            float rotationInputY{ 0.0F };
+        };
+
+        FirstPersonOrientationSample CaptureFirstPersonOrientation(
+            RE::FirstPersonState* state,
+            bool captureDiagnostics)
+        {
+            FirstPersonOrientationSample sample{};
+            if (!state) {
+                return sample;
+            }
+
+            sample.currentPitchOffset = state->currentPitchOffset;
+            sample.targetPitchOffset = state->targetPitchOffset;
+            sample.cameraPitchOverride = state->cameraPitchOverride;
+            if (!captureDiagnostics) {
+                return sample;
+            }
+            state->GetRotation(sample.cameraRotation);
+            if (state->firstPersonCameraObj) {
+                sample.hasCameraObject = true;
+                state->firstPersonCameraObj->local.rotate.ToEulerAnglesXYZ(sample.localEuler);
+                state->firstPersonCameraObj->world.rotate.ToEulerAnglesXYZ(sample.worldEuler);
+            }
+            if (auto* camera = RE::PlayerCamera::GetSingleton()) {
+                sample.playerCameraYaw = camera->yaw;
+                sample.rotationInputX = camera->rotationInput.x;
+                sample.rotationInputY = camera->rotationInput.y;
+            }
+            return sample;
+        }
+
+        float WrappedAngleDelta(float after, float before) noexcept
+        {
+            float delta = after - before;
+            constexpr float twoPi = 2.0F * std::numbers::pi_v<float>;
+            while (delta > std::numbers::pi_v<float>) {
+                delta -= twoPi;
+            }
+            while (delta < -std::numbers::pi_v<float>) {
+                delta += twoPi;
+            }
+            return delta;
+        }
+
+        void FirstPersonStateUpdateHook(
+            RE::FirstPersonState* state,
+            RE::BSTSmartPointer<RE::TESCameraState>& nextState)
+        {
+            if (!g_originalFirstPersonStateUpdate) {
+                return;
+            }
+
+            const auto config = ConfigManager::Get().GetSnapshot();
+            const auto before = CaptureFirstPersonOrientation(state, config.verboseLogging);
+            g_originalFirstPersonStateUpdate(state, nextState);
+            const auto after = CaptureFirstPersonOrientation(state, config.verboseLogging);
+
+            MouseTelemetryWindow input{};
+            {
+                std::scoped_lock lock(g_mouseTelemetryLock);
+                input = std::move(g_mouseTelemetryWindow);
+                g_mouseTelemetryWindow = {};
+            }
+            ++g_firstPersonTelemetryFrame;
+            const bool sprinting = IsSprintingRelocated(RE::PlayerCharacter::GetSingleton());
+            const bool hasInputWindow = input.eventCount > 0;
+            const bool stableState =
+                !hasInputWindow || input.firstState == input.lastState;
+            const std::string activeState =
+                hasInputWindow ? input.lastState : g_lastAimState;
+            const bool pitchTargetInRange =
+                std::abs(before.targetPitchOffset) < 95.0F &&
+                std::abs(after.targetPitchOffset) < 95.0F;
+            const float pitchOffsetDelta =
+                after.currentPitchOffset - before.currentPitchOffset;
+            const float engineTargetPitchDelta =
+                after.targetPitchOffset - before.targetPitchOffset;
+            const bool trueFreelookBaseline =
+                hasInputWindow &&
+                stableState &&
+                activeState == "freelook" &&
+                g_lastTrueFreelookEligible &&
+                !sprinting &&
+                !after.cameraPitchOverride &&
+                pitchTargetInRange;
+            // The pitch gain is an engine constant relative to post-transform Y.
+            // Seed once from three consistent true-freelook samples, then freeze it;
+            // bow-exit interpolation can otherwise contaminate an adaptive EMA.
+            if (trueFreelookBaseline && g_freelookPitchPerLook == 0.0F) {
+                UpdateFreelookScaleSample(
+                    input.outY,
+                    engineTargetPitchDelta,
+                    g_freelookPitchPerLook,
+                    g_pendingFreelookPitchPerLook,
+                    g_pendingFreelookPitchSamples);
+            }
+
+            const bool trueFreelookEnvironment =
+                activeState == "freelook" &&
+                g_lastTrueFreelookEligible &&
+                !sprinting;
+            const bool normalizationEligible =
+                config.enabled &&
+                config.enableFirstPersonHook &&
+                stableState &&
+                !trueFreelookEnvironment &&
+                !after.cameraPitchOverride &&
+                pitchTargetInRange &&
+                std::abs(g_freelookPitchPerLook) > 0.0000001F;
+            const float requestedNormalizedPitchDelta = NormalizePitchTargetDelta(
+                input.outY,
+                engineTargetPitchDelta,
+                g_freelookPitchPerLook,
+                normalizationEligible);
+
+            if (trueFreelookEnvironment ||
+                !config.enabled ||
+                !config.enableFirstPersonHook ||
+                after.cameraPitchOverride) {
+                g_hasNormalizedPitchTarget = false;
+            }
+            if (normalizationEligible && !g_hasNormalizedPitchTarget) {
+                g_normalizedPitchTarget = before.targetPitchOffset;
+                g_hasNormalizedPitchTarget = true;
+            }
+            if (normalizationEligible && hasInputWindow) {
+                g_normalizedPitchTarget = std::clamp(
+                    g_normalizedPitchTarget + requestedNormalizedPitchDelta,
+                    -100.0F,
+                    100.0F);
+            }
+
+            const float correctedTargetPitchAfter =
+                normalizationEligible && g_hasNormalizedPitchTarget
+                ? g_normalizedPitchTarget
+                : after.targetPitchOffset;
+            const float normalizedTargetPitchDelta =
+                correctedTargetPitchAfter - before.targetPitchOffset;
+            const bool pitchNormalized =
+                normalizationEligible &&
+                std::abs(correctedTargetPitchAfter - after.targetPitchOffset) > 0.00001F;
+            if (normalizationEligible && g_hasNormalizedPitchTarget) {
+                state->targetPitchOffset = correctedTargetPitchAfter;
+            }
+            if (pitchNormalized) {
+                ++g_pitchNormalizationCount;
+            }
+
+            float localXDelta = 0.0F;
+            float localYDelta = 0.0F;
+            float localZDelta = 0.0F;
+            float worldXDelta = 0.0F;
+            float worldYDelta = 0.0F;
+            float worldZDelta = 0.0F;
+            float cameraYawDelta = 0.0F;
+            if (config.verboseLogging) {
+                localXDelta = WrappedAngleDelta(after.localEuler.x, before.localEuler.x);
+                localYDelta = WrappedAngleDelta(after.localEuler.y, before.localEuler.y);
+                localZDelta = WrappedAngleDelta(after.localEuler.z, before.localEuler.z);
+                worldXDelta = WrappedAngleDelta(after.worldEuler.x, before.worldEuler.x);
+                worldYDelta = WrappedAngleDelta(after.worldEuler.y, before.worldEuler.y);
+                worldZDelta = WrappedAngleDelta(after.worldEuler.z, before.worldEuler.z);
+                cameraYawDelta = WrappedAngleDelta(after.playerCameraYaw, before.playerCameraYaw);
+            }
+
+            if (ShouldEmitSampledLog(
+                    config.verboseLogging,
+                    g_firstPersonTelemetryFrame,
+                    120,
+                    true)) {
+                LogInfo(
+                    "FinalAxisResponse"
+                    " frame=" + std::to_string(g_firstPersonTelemetryFrame) +
+                    " events=" + std::to_string(input.eventCount) +
+                    " state=" + activeState +
+                    " raw=(" + std::to_string(input.rawX) + "," + std::to_string(input.rawY) + ")" +
+                    " out=(" + std::to_string(input.outX) + "," + std::to_string(input.outY) + ")" +
+                    " pitchOffsetDelta=" + std::to_string(pitchOffsetDelta) +
+                    " engineTargetPitchDelta=" + std::to_string(engineTargetPitchDelta) +
+                    " requestedNormalizedPitchDelta=" + std::to_string(requestedNormalizedPitchDelta) +
+                    " normalizedTargetPitchDelta=" + std::to_string(normalizedTargetPitchDelta) +
+                    " freelookPitchPerLook=" + std::to_string(g_freelookPitchPerLook) +
+                    " pitchNormalized=" + std::to_string(pitchNormalized ? 1 : 0) +
+                    " localEulerDelta=(" + std::to_string(localXDelta) + "," +
+                        std::to_string(localYDelta) + "," + std::to_string(localZDelta) + ")" +
+                    " worldEulerDelta=(" + std::to_string(worldXDelta) + "," +
+                        std::to_string(worldYDelta) + "," + std::to_string(worldZDelta) + ")" +
+                    " cameraYawDelta=" + std::to_string(cameraYawDelta) +
+                    " fov=(" + std::to_string(input.currentHFov) + "," +
+                        std::to_string(input.currentVFov) + ")");
+            }
+        }
         void PlayerModifyMovementDataHook(
             RE::PlayerCharacter* player,
             float delta,
@@ -402,18 +638,22 @@ namespace msf
             const bool inThirdPerson = camera && camera->IsInThirdPerson();
             const RE::NiPoint2 lookInput = controls ? controls->data.lookInputVec : RE::NiPoint2{};
             const float engineYawDelta = rotationData.z;
-            rotationData.z = RestoreHalfRateYawDelta(
+            const bool yawEligible = ShouldRestoreHalfRateFirstPersonYaw(
+                config.enabled,
+                config.enableFirstPersonHook,
+                inThirdPerson,
+                sprinting,
+                bowAiming);
+            const float globalTimeMult = RE::BSTimer::GetCurrentGlobalTimeMult();
+            const auto yawCorrection = ApplyFirstPersonYawCorrection(
                 lookInput.x,
                 delta,
                 rotationData.z,
-                ShouldRestoreHalfRateFirstPersonYaw(
-                    config.enabled,
-                    config.hotDisable,
-                    config.enableFirstPersonHook,
-                    inThirdPerson,
-                    sprinting,
-                    bowAiming));
+                globalTimeMult,
+                yawEligible);
+            rotationData.z = yawCorrection.yawDelta;
             const bool yawCorrected = rotationData.z != engineYawDelta;
+            const bool timeDilatedYawCompensated = yawCorrection.timeCompensated;
             if (yawCorrected) {
                 ++g_playerYawCorrectionCount;
                 if (ShouldEmitSampledLog(
@@ -429,7 +669,9 @@ namespace msf
                         " engineYaw=" + std::to_string(engineYawDelta) +
                         " restoredYaw=" + std::to_string(rotationData.z) +
                         " lookX=" + std::to_string(lookInput.x) +
-                        " delta=" + std::to_string(delta));
+                        " delta=" + std::to_string(delta) +
+                        " timeMult=" + std::to_string(globalTimeMult) +
+                        " timeComp=" + std::to_string(timeDilatedYawCompensated ? 1 : 0));
                 }
             }
 
@@ -458,13 +700,15 @@ namespace msf
                         " state=" + state +
                         " sprinting=" + std::to_string(sprinting ? 1 : 0) +
                         " yawCorrected=" + std::to_string(yawCorrected ? 1 : 0) +
+                        " timeComp=" + std::to_string(timeDilatedYawCompensated ? 1 : 0) +
                         " look=(" + std::to_string(lookInput.x) + "," + std::to_string(lookInput.y) + ")" +
                         " rotYawEngine=" + std::to_string(engineYawDelta) +
                         " rotYawOut=" + std::to_string(rotationData.z) +
                         " yawPerLook=" + std::to_string(yawPerLook) +
                         " freelookYawPerLook=" + std::to_string(g_freelookYawPerLook) +
                         " yawRatioToFreelook=" + std::to_string(yawRatioToFreelook) +
-                        " delta=" + std::to_string(delta));
+                        " delta=" + std::to_string(delta) +
+                        " timeMult=" + std::to_string(globalTimeMult));
                 }
             }
 
@@ -566,8 +810,8 @@ namespace msf
             RenderedFovSample rendered{};
             bool renderedZoomedIn = false;
             if (reloadedConfig.verboseLogging) {
-                // Eagle Eye narrows NiCamera::viewFrustum. PlayerCamera::firstPersonFOV /
-                // worldFOV are configured base values and often stay fixed (esp. with IC).
+                // Eagle Eye narrows NiCamera::viewFrustum. Keep the camera-tree walk
+                // diagnostic-only so normal mouse input does not pay for RTTI traversal.
                 baseAimFov = camera
                     ? (inThirdPerson ? camera->worldFOV : camera->firstPersonFOV)
                     : 0.0F;
@@ -646,28 +890,30 @@ namespace msf
                 g_lastCameraState = inThirdPerson
                     ? (effectiveBowZoomedIn ? "ThirdPerson_EagleEye" : "ThirdPerson_BowAim")
                     : (effectiveBowZoomedIn ? "FirstPerson_EagleEye" : "FirstPerson_BowAim");
-                const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
-                bowY = CalculateBowAimVerticalMultiplier(
-                    true,
-                    static_cast<float>(reloadedConfig.bowAimMouseYMultiplier));
-                // Rendered FOV is diagnostic only. Eagle Eye must preserve the configured
-                // freelook-equivalent Y response instead of scaling it by the zoom ratio.
+                // FOV is telemetry only while final yaw and pitch gains are measured.
                 eagleEyeY = 1.0F;
-                // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
-                // scale, then apply bowX relative to that baseline. Falls back to the
-                // engine delta if the scale is not yet seeded.
-                // Keep the engine's current Y delta. Eagle Eye changes the zoom/FOV
-                // response, and rebuilding from the cached normal-play pixel scale
-                // makes bow Y stale and ignores live game sensitivity changes.
-                // Apply the configurable bow adjustment here, then ApplyTransform
-                // applies the current global and mouse Y settings exactly once.
-                std::tie(deltaX, deltaY) = ApplyBowAimMouseDeltas(
-                    rawPixelX,
-                    deltaX,
-                    deltaY,
-                    sampledScale.x.value,
-                    bowX,
-                    bowY);
+                // Bow aim X reconstruction + configurable bow multipliers are first-person
+                // only. In third person, leave the engine/camera-mod look deltas alone.
+                if (ShouldApplyBowAimMousePath(inThirdPerson, true)) {
+                    const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
+                    bowY = CalculateBowAimVerticalMultiplier(
+                        true,
+                        static_cast<float>(reloadedConfig.bowAimMouseYMultiplier));
+                    // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
+                    // scale, then apply bowX relative to that baseline. Falls back to the
+                    // engine delta if the scale is not yet seeded.
+                    // Keep the engine's current Y delta. Rebuilding from the cached normal-play
+                    // pixel scale makes bow Y stale and ignores live game sensitivity changes.
+                    // Apply the configurable bow adjustment here, then ApplyTransform
+                    // applies the current global and mouse Y settings exactly once.
+                    std::tie(deltaX, deltaY) = ApplyBowAimMouseDeltas(
+                        rawPixelX,
+                        deltaX,
+                        deltaY,
+                        sampledScale.x.value,
+                        bowX,
+                        bowY);
+                }
             } else if (bowOut) {
                 g_lastCameraState = inThirdPerson ? "ThirdPerson_BowOut" : "FirstPerson_BowOut";
             }
@@ -695,6 +941,35 @@ namespace msf
             g_lastEagleEyeY = eagleEyeY;
             g_lastBowY = isBowAim ? bowY : 1.0F;
             g_lastAimState = ClassifyAimState(bowOut, isBowAim, effectiveBowZoomedIn);
+
+            // Only first-person mouse windows feed FirstPersonState::Update. Third-person
+            // pitch telemetry uses HandleLookInput's own input argument and must not leave
+            // stale events for the first-person normalizer after a camera transition.
+            if (!inThirdPerson) {
+                std::scoped_lock lock(g_mouseTelemetryLock);
+                auto& window = g_mouseTelemetryWindow;
+                const auto eventId = ++g_mouseTelemetryEventId;
+                if (window.eventCount == 0) {
+                    window.firstEventId = eventId;
+                    window.firstState = g_lastAimState;
+                }
+                window.lastEventId = eventId;
+                window.lastState = g_lastAimState;
+                ++window.eventCount;
+                window.rawX += rawPixelX;
+                window.rawY += rawPixelY;
+                window.engineX += g_lastEngineX;
+                window.engineY += g_lastEngineY;
+                window.outX += outX;
+                window.outY += outY;
+                window.normalFov = g_normalAimFov;
+                window.currentVFov = currentAimFov;
+                window.currentHFov = rendered.hFovDegrees;
+            } else {
+                std::scoped_lock lock(g_mouseTelemetryLock);
+                g_mouseTelemetryWindow = {};
+            }
+
             data->lookInputVec.x = outX;
             data->lookInputVec.y = outY;
 
@@ -764,6 +1039,8 @@ namespace msf
             float rawX = event->xValue;
             float rawY = event->yValue;
 
+            // Gamepad bow multipliers apply in both perspectives. The first-person-only
+            // restriction belongs to raw-mouse reconstruction, not thumbstick tuning.
             if (DetectBowAim(RE::PlayerCharacter::GetSingleton())) {
                 const float bowX = static_cast<float>(reloadedConfig.bowAimGamepadXMultiplier);
                 const float bowY = static_cast<float>(reloadedConfig.bowAimGamepadYMultiplier);
@@ -805,6 +1082,7 @@ namespace msf
                 return;
             }
 
+            const float beforePitch = state ? state->freeRotation.y : 0.0F;
             g_originalThirdPersonHandleLookInput(state, input);
 
             if (!state || !g_activeCoordinator) {
@@ -815,16 +1093,33 @@ namespace msf
             const auto config = ConfigManager::Get().GetSnapshot();
             ++g_thirdPersonHookCallsTotal;
 
-            if (!g_activeCoordinator->ShouldRemoveThirdPersonSmoothing(config)) {
-                LogThirdPersonHookCountersIfNeeded(config);
-                return;
-            }
+            const float afterPitch = state->freeRotation.y;
+            const float engineTargetPitchDelta = afterPitch - beforePitch;
+            const std::string activeState = g_lastAimState;
 
-            // Collapse camera interpolation in third-person state to remove delayed follow behavior.
-            state->currentYaw = state->targetYaw;
-            state->currentZoomOffset = state->targetZoomOffset;
-            ++g_thirdPersonSmoothingAppliedCount;
+            if (g_activeCoordinator->ShouldRemoveThirdPersonSmoothing(config)) {
+                // Collapse camera interpolation in third-person state to remove delayed follow behavior.
+                state->currentYaw = state->targetYaw;
+                state->currentZoomOffset = state->targetZoomOffset;
+                ++g_thirdPersonSmoothingAppliedCount;
+            }
             LogThirdPersonHookCountersIfNeeded(config);
+
+            if (ShouldEmitSampledLog(
+                    config.verboseLogging,
+                    g_thirdPersonHookCallsTotal,
+                    120,
+                    true)) {
+                LogInfo(
+                    "ThirdPersonFinalAxisResponse"
+                    " total=" + std::to_string(g_thirdPersonHookCallsTotal) +
+                    " state=" + activeState +
+                    " input=(" + std::to_string(input.x) + "," + std::to_string(input.y) + ")" +
+                    " engineTargetPitchDelta=" + std::to_string(engineTargetPitchDelta) +
+                    " freeRotationY=" + std::to_string(state->freeRotation.y) +
+                    " pitchNormalized=0" +
+                    " freeRotationEnabled=" + std::to_string(state->freeRotationEnabled ? 1 : 0));
+            }
         }
 
     }
@@ -856,6 +1151,49 @@ namespace msf
         return engineYawDelta;
     }
 
+    float CompensateTimeDilatedYawDelta(
+        float yawDelta,
+        float globalTimeMult) noexcept
+    {
+        if (!std::isfinite(yawDelta) ||
+            !std::isfinite(globalTimeMult) ||
+            globalTimeMult <= 0.0F) {
+            return yawDelta;
+        }
+
+        // Near-1.0 means normal play / FPS jitter; only boost when clearly slowed.
+        // Eagle Eye's vanilla slow-time factor is ~0.25.
+        constexpr float kDilatedUpperBound = 0.90F;
+        constexpr float kDilatedLowerBound = 0.05F;
+        if (globalTimeMult >= kDilatedUpperBound || globalTimeMult <= kDilatedLowerBound) {
+            return yawDelta;
+        }
+
+        return yawDelta / globalTimeMult;
+    }
+
+    FirstPersonYawCorrectionResult ApplyFirstPersonYawCorrection(
+        float postSensitivityLookX,
+        float deltaSeconds,
+        float engineYawDelta,
+        float globalTimeMult,
+        bool eligible) noexcept
+    {
+        const float halfRateCorrected = RestoreHalfRateYawDelta(
+            postSensitivityLookX,
+            deltaSeconds,
+            engineYawDelta,
+            eligible);
+        const float timeCorrected = eligible
+            ? CompensateTimeDilatedYawDelta(halfRateCorrected, globalTimeMult)
+            : halfRateCorrected;
+        return {
+            timeCorrected,
+            halfRateCorrected != engineYawDelta,
+            timeCorrected != halfRateCorrected
+        };
+    }
+
     std::pair<float, float> ApplyBowAimMouseDeltas(
         float rawPixelX,
         float engineDeltaX,
@@ -875,6 +1213,21 @@ namespace msf
         float configuredBowYMultiplier) noexcept
     {
         return bowAiming ? configuredBowYMultiplier : 1.0F;
+    }
+
+    float NormalizePitchTargetDelta(
+        float postTransformLookY,
+        float engineTargetPitchDelta,
+        float freelookPitchPerLook,
+        bool eligible) noexcept
+    {
+        if (!eligible ||
+            !std::isfinite(postTransformLookY) ||
+            !std::isfinite(freelookPitchPerLook) ||
+            std::abs(freelookPitchPerLook) <= 0.0000001F) {
+            return engineTargetPitchDelta;
+        }
+        return postTransformLookY * freelookPitchPerLook;
     }
 
     bool ShouldUpdateFreelookSampledScale(
@@ -971,17 +1324,20 @@ namespace msf
 
     bool ShouldRestoreHalfRateFirstPersonYaw(
         bool enabled,
-        bool hotDisabled,
         bool firstPersonHookEnabled,
         bool inThirdPerson,
         bool sprinting,
         bool bowAiming) noexcept
     {
         return enabled &&
-               !hotDisabled &&
                firstPersonHookEnabled &&
                !inThirdPerson &&
                (sprinting || bowAiming);
+    }
+
+    bool ShouldApplyBowAimMousePath(bool inThirdPerson, bool bowAiming) noexcept
+    {
+        return bowAiming && !inThirdPerson;
     }
 
     bool ShouldEmitSampledLog(
@@ -1129,6 +1485,58 @@ namespace msf
 #endif
     }
 
+    bool HookCoordinator::InstallFirstPersonTelemetryHook()
+    {
+#if MSF_USE_COMMONLIBSSE
+        if (g_originalFirstPersonStateUpdate) {
+            return true;
+        }
+
+        REL::Relocation<std::uintptr_t> firstPersonStateVTable{ RE::VTABLE_FirstPersonState[0] };
+        g_originalFirstPersonStateUpdate = reinterpret_cast<FirstPersonStateUpdateFn>(
+            firstPersonStateVTable.write_vfunc(3, FirstPersonStateUpdateHook));
+        if (!g_originalFirstPersonStateUpdate) {
+            LogError("Failed to install FirstPersonState::Update final-axis telemetry hook.");
+            return false;
+        }
+
+        g_firstPersonTelemetryFrame = 0;
+        g_mouseTelemetryEventId = 0;
+        g_freelookPitchPerLook = 0.0F;
+        g_pendingFreelookPitchPerLook = 0.0F;
+        g_pendingFreelookPitchSamples = 0;
+        g_pitchNormalizationCount = 0;
+        g_normalizedPitchTarget = 0.0F;
+        g_hasNormalizedPitchTarget = false;
+        {
+            std::scoped_lock lock(g_mouseTelemetryLock);
+            g_mouseTelemetryWindow = {};
+        }
+        LogInfo("Installed FirstPersonState::Update final-axis telemetry hook.");
+        return true;
+#else
+        LogWarn("CommonLibSSE disabled; cannot install final-axis telemetry hook.");
+        return false;
+#endif
+    }
+
+    void HookCoordinator::RemoveFirstPersonTelemetryHook()
+    {
+#if MSF_USE_COMMONLIBSSE
+        if (!g_originalFirstPersonStateUpdate) {
+            return;
+        }
+
+        REL::Relocation<std::uintptr_t> firstPersonStateVTable{ RE::VTABLE_FirstPersonState[0] };
+        firstPersonStateVTable.write_vfunc(
+            3,
+            reinterpret_cast<std::uintptr_t>(g_originalFirstPersonStateUpdate));
+        g_originalFirstPersonStateUpdate = nullptr;
+        LogInfo("Removed FirstPersonState::Update final-axis telemetry hook.");
+#endif
+    }
+
+
     bool HookCoordinator::InstallThirdPersonSmoothingHook()
     {
 #if MSF_USE_COMMONLIBSSE
@@ -1189,6 +1597,7 @@ namespace msf
 
         _firstPersonRegistered = false;
         _playerYawRegistered = false;
+        _firstPersonTelemetryRegistered = false;
         _smoothingRemovalRegistered = false;
 #if MSF_USE_COMMONLIBSSE
         g_activeCoordinator = this;
@@ -1211,7 +1620,21 @@ namespace msf
             return false;
         }
 
+        _firstPersonTelemetryRegistered = InstallFirstPersonTelemetryHook();
+        if (!_firstPersonTelemetryRegistered) {
+            RemovePlayerYawHook();
+            _playerYawRegistered = false;
+            RemoveLookHandlerMouseMoveHook();
+            _firstPersonRegistered = false;
+#if MSF_USE_COMMONLIBSSE
+            g_activeCoordinator = nullptr;
+#endif
+            return false;
+        }
+
         if (!RegisterHookPoint(HookRegistrationPoint::SmoothingRemoval)) {
+            RemoveFirstPersonTelemetryHook();
+            _firstPersonTelemetryRegistered = false;
             RemovePlayerYawHook();
             _playerYawRegistered = false;
             RemoveLookHandlerMouseMoveHook();
@@ -1229,11 +1652,13 @@ namespace msf
 
     void HookCoordinator::Remove()
     {
+        RemoveFirstPersonTelemetryHook();
         RemovePlayerYawHook();
         RemoveLookHandlerMouseMoveHook();
         RemoveThirdPersonSmoothingHook();
         _firstPersonRegistered = false;
         _playerYawRegistered = false;
+        _firstPersonTelemetryRegistered = false;
         _smoothingRemovalRegistered = false;
         _installed = false;
 #if MSF_USE_COMMONLIBSSE
@@ -1249,7 +1674,6 @@ namespace msf
             std::scoped_lock guard(_policyLock);
             changed = _activePolicy.mode != policy.mode ||
                       _activePolicy.installInputHooks != policy.installInputHooks ||
-                      _activePolicy.installSmoothingRemovalHooks != policy.installSmoothingRemovalHooks ||
                       _activePolicy.allowThirdPersonSmoothingIntervention != policy.allowThirdPersonSmoothingIntervention ||
                       _activePolicy.reason != policy.reason;
             _activePolicy = policy;
@@ -1257,9 +1681,6 @@ namespace msf
         std::uint8_t flags = 0;
         if (policy.installInputHooks) {
             flags |= kInputTransformsAllowed;
-        }
-        if (policy.installSmoothingRemovalHooks) {
-            flags |= kSmoothingRemovalAllowed;
         }
         if (policy.allowThirdPersonSmoothingIntervention) {
             flags |= kThirdPersonSmoothingAllowed;
@@ -1280,7 +1701,7 @@ namespace msf
         bool isGamepad) const
     {
         const auto policyFlags = _policyFlags.load(std::memory_order_acquire);
-        if (!config.enabled || config.hotDisable ||
+        if (!config.enabled ||
             (policyFlags & kInputTransformsAllowed) == 0) {
             return false;
         }
@@ -1294,15 +1715,13 @@ namespace msf
     {
         const auto policyFlags = _policyFlags.load(std::memory_order_acquire);
         return config.enabled &&
-               !config.hotDisable &&
                config.enableSmoothingRemovalHook &&
-               (policyFlags & kSmoothingRemovalAllowed) != 0 &&
                (policyFlags & kThirdPersonSmoothingAllowed) != 0;
     }
 
     std::pair<float, float> HookCoordinator::ApplyTransform(float deltaX, float deltaY, const ConfigValues& config, bool isGamepad) const
     {
-        if (!config.enabled || config.hotDisable) {
+        if (!config.enabled) {
             return { deltaX, deltaY };
         }
 

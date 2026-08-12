@@ -24,7 +24,6 @@ namespace msf
         using ImGuiSeparatorFn = void(__cdecl*)();
         using ImGuiCheckboxFn = bool(__cdecl*)(const char* label, bool* value);
         using ImGuiSliderFloatFn = bool(__cdecl*)(const char* label, float* value, float minValue, float maxValue, const char* format, int flags);
-        using ImGuiSliderIntFn = bool(__cdecl*)(const char* label, int* value, int minValue, int maxValue, const char* format, int flags);
         using ImGuiButtonFn = bool(__cdecl*)(const char* label, ImVec2 size);
         using ImGuiSameLineFn = void(__cdecl*)(float offsetFromStartX, float spacing);
 
@@ -36,7 +35,6 @@ namespace msf
             ImGuiSeparatorFn Separator{ nullptr };
             ImGuiCheckboxFn Checkbox{ nullptr };
             ImGuiSliderFloatFn SliderFloat{ nullptr };
-            ImGuiSliderIntFn SliderInt{ nullptr };
             ImGuiButtonFn Button{ nullptr };
             ImGuiSameLineFn SameLine{ nullptr };
         };
@@ -83,25 +81,16 @@ namespace msf
             auto values = ConfigManager::Get().GetSnapshot();
             bool changed = false;
 
-            // Keep these groups aligned with the INI sections. Verbose logging
-            // is intentionally omitted from the menu because it is diagnostic-only.
+            // Front-page controls only. Demoted General/Advanced knobs remain
+            // INI-only (still loaded/saved by ConfigManager). Verbose logging
+            // stays omitted because it is diagnostic-only.
             UiSeparatorText("General");
             changed |= g_api.Checkbox("Enabled", &values.enabled);
-            changed |= g_api.Checkbox("Hot disable (bypass all plugin behavior)", &values.hotDisable);
             float globalSens = static_cast<float>(values.globalSensitivity);
             if (g_api.SliderFloat("Global sensitivity", &globalSens, 0.01F, 20.0F, "%.2f", 0)) {
                 values.globalSensitivity = static_cast<double>(globalSens);
                 changed = true;
             }
-            changed |= g_api.Checkbox("Apply in first person", &values.enableFirstPersonHook);
-            changed |= g_api.Checkbox("Apply in third person", &values.enableThirdPersonHook);
-            changed |= g_api.Checkbox("Remove third-person smoothing", &values.enableSmoothingRemovalHook);
-            changed |= g_api.Checkbox("Disable in menus", &values.disableInMenus);
-            changed |= g_api.Checkbox("Disable when look controls disabled", &values.disableWhenLookControlsDisabled);
-            changed |= g_api.Checkbox("Apply to gamepad look", &values.affectGamepadLook);
-            changed |= g_api.Checkbox("Suppress focus spike (alt-tab)", &values.suppressFocusSpike);
-
-            UiSeparatorText("Advanced");
             float mouseX = static_cast<float>(values.mouseXAxisMultiplier);
             float mouseY = static_cast<float>(values.mouseYAxisMultiplier);
             float gamepadX = static_cast<float>(values.gamepadXAxisMultiplier);
@@ -122,39 +111,15 @@ namespace msf
                 values.gamepadYAxisMultiplier = static_cast<double>(gamepadY);
                 changed = true;
             }
-            float bowMouseX = static_cast<float>(values.bowAimMouseXMultiplier);
-            float bowMouseY = static_cast<float>(values.bowAimMouseYMultiplier);
-            float bowGamepadX = static_cast<float>(values.bowAimGamepadXMultiplier);
-            float bowGamepadY = static_cast<float>(values.bowAimGamepadYMultiplier);
-            if (g_api.SliderFloat("Bow mouse X multiplier", &bowMouseX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimMouseXMultiplier = static_cast<double>(bowMouseX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Bow mouse Y multiplier", &bowMouseY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimMouseYMultiplier = static_cast<double>(bowMouseY);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Bow gamepad X multiplier", &bowGamepadX, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimGamepadXMultiplier = static_cast<double>(bowGamepadX);
-                changed = true;
-            }
-            if (g_api.SliderFloat("Bow gamepad Y multiplier", &bowGamepadY, 0.01F, 20.0F, "%.2f", 0)) {
-                values.bowAimGamepadYMultiplier = static_cast<double>(bowGamepadY);
-                changed = true;
-            }
-            if (g_api.SliderInt("Focus spike gap (ms)", &values.focusSpikeGapMs, 50, 5000, "%d", 0)) {
-                changed = true;
-            }
+            changed |= g_api.Checkbox("Remove third-person smoothing", &values.enableSmoothingRemovalHook);
+            changed |= g_api.Checkbox("Suppress focus spike (alt-tab)", &values.suppressFocusSpike);
+            changed |= g_api.Checkbox("Apply to gamepad look", &values.affectGamepadLook);
 
             // ── Compatibility ─────────────────────────────────────────────────
             UiSeparatorText("Compatibility");
-            changed |= g_api.Checkbox("Use compatibility presets", &values.useCompatibilityPresets);
-            changed |= g_api.Checkbox("Preset: Improved Camera", &values.presetImprovedCamera);
-            changed |= g_api.Checkbox("Preset: SmoothCam", &values.presetSmoothCam);
-            changed |= g_api.Checkbox("Delegate 3rd-person smoothing to SmoothCam", &values.delegateThirdPersonWhenSmoothCam);
-            changed |= g_api.Checkbox("Delegate 3rd-person smoothing to Improved Camera", &values.delegateThirdPersonWhenImprovedCamera);
-            changed |= g_api.Checkbox("Force override SmoothCam", &values.forceOverrideSmoothCam);
-            changed |= g_api.Checkbox("Force override Improved Camera", &values.forceOverrideImprovedCamera);
+            changed |= g_api.Checkbox(
+                "Keep CMC 3rd-person smoothing removal with camera mods",
+                &values.keepThirdPersonSmoothingRemovalWithCameraMods);
 
             // ─────────────────────────────────────────────────────────────────
             if (changed) {
@@ -184,6 +149,7 @@ namespace msf
             } else {
                 UiText("Last operation failed. Check log for details.");
             }
+            UiText("Advanced options (bow multipliers, focus gap, per-camera gates, etc.) are INI-only.");
         }
 
         bool ResolveFrameworkApi()
@@ -202,7 +168,6 @@ namespace msf
             g_api.Separator = ResolveProc<ImGuiSeparatorFn>(frameworkModule, "igSeparator");
             g_api.Checkbox = ResolveProc<ImGuiCheckboxFn>(frameworkModule, "igCheckbox");
             g_api.SliderFloat = ResolveProc<ImGuiSliderFloatFn>(frameworkModule, "igSliderFloat");
-            g_api.SliderInt = ResolveProc<ImGuiSliderIntFn>(frameworkModule, "igSliderInt");
             g_api.Button = ResolveProc<ImGuiButtonFn>(frameworkModule, "igButton");
             g_api.SameLine = ResolveProc<ImGuiSameLineFn>(frameworkModule, "igSameLine");
 
@@ -210,7 +175,6 @@ namespace msf
                    g_api.TextUnformatted != nullptr &&
                    g_api.Checkbox != nullptr &&
                    g_api.SliderFloat != nullptr &&
-                   g_api.SliderInt != nullptr &&
                    g_api.Button != nullptr;
         }
     }

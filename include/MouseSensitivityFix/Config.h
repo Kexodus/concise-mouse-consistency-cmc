@@ -12,7 +12,6 @@ namespace msf
     struct ConfigValues
     {
         bool enabled{ true };
-        bool hotDisable{ false };
         bool verboseLogging{ false };
         bool enableFirstPersonHook{ true };
         bool enableThirdPersonHook{ true };
@@ -22,20 +21,17 @@ namespace msf
         bool affectGamepadLook{ true };
         bool suppressFocusSpike{ true };
 
-        bool useCompatibilityPresets{ true };
-        bool presetImprovedCamera{ true };
-        bool presetSmoothCam{ true };
-        bool delegateThirdPersonWhenSmoothCam{ true };
-        bool delegateThirdPersonWhenImprovedCamera{ true };
-        bool forceOverrideSmoothCam{ false };
-        bool forceOverrideImprovedCamera{ false };
+        // When true (default), CMC keeps removing third-person smoothing even if
+        // SmoothCam / Improved Camera DLLs are detected. When false, CMC skips
+        // third-person smoothing intervention if either camera mod is present.
+        bool keepThirdPersonSmoothingRemovalWithCameraMods{ true };
 
         int focusSpikeGapMs{ 350 };
         double globalSensitivity{ 1.0 };
         double mouseXAxisMultiplier{ 1.0 };
         double mouseYAxisMultiplier{ 1.0 };
         double gamepadXAxisMultiplier{ 1.0 };
-        double gamepadYAxisMultiplier{ 0.55 };
+        double gamepadYAxisMultiplier{ 1.0 };
         double bowAimMouseXMultiplier{ 1.0 };
         double bowAimMouseYMultiplier{ 1.0 };
         double bowAimGamepadXMultiplier{ 1.0 };
