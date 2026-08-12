@@ -21,13 +21,32 @@ namespace msf
         float deltaSeconds,
         float engineYawDelta,
         bool eligible) noexcept;
+    // Undo global slow-time on an already half-rate-restored yaw delta so wall-clock
+    // mouse-to-yaw matches freelook (Eagle Eye uses ~0.25 time mult).
+    float CompensateTimeDilatedYawDelta(
+        float yawDelta,
+        float globalTimeMult) noexcept;
+    struct FirstPersonYawCorrectionResult
+    {
+        float yawDelta{ 0.0F };
+        bool halfRateRestored{ false };
+        bool timeCompensated{ false };
+    };
+    FirstPersonYawCorrectionResult ApplyFirstPersonYawCorrection(
+        float postSensitivityLookX,
+        float deltaSeconds,
+        float engineYawDelta,
+        float globalTimeMult,
+        bool eligible) noexcept;
     bool ShouldRestoreHalfRateFirstPersonYaw(
         bool enabled,
-        bool hotDisabled,
         bool firstPersonHookEnabled,
         bool inThirdPerson,
         bool sprinting,
         bool bowAiming) noexcept;
+    // Bow aim mouse reconstruction is first-person only. Third-person camera mods
+    // own their own look pipeline once a ranged weapon is out.
+    bool ShouldApplyBowAimMousePath(bool inThirdPerson, bool bowAiming) noexcept;
     std::pair<float, float> ApplyBowAimMouseDeltas(
         float rawPixelX,
         float engineDeltaX,
@@ -38,6 +57,11 @@ namespace msf
     float CalculateBowAimVerticalMultiplier(
         bool bowAiming,
         float configuredBowYMultiplier) noexcept;
+    float NormalizePitchTargetDelta(
+        float postTransformLookY,
+        float engineTargetPitchDelta,
+        float freelookPitchPerLook,
+        bool eligible) noexcept;
     bool ShouldUpdateFreelookSampledScale(
         bool rangedWeaponEquipped,
         bool weaponFullySheathed,
@@ -80,14 +104,17 @@ namespace msf
         void RemoveLookHandlerMouseMoveHook();
         bool InstallPlayerYawHook();
         void RemovePlayerYawHook();
+        bool InstallFirstPersonTelemetryHook();
+        void RemoveFirstPersonTelemetryHook();
         bool InstallThirdPersonSmoothingHook();
         void RemoveThirdPersonSmoothingHook();
         bool _installed{ false };
         bool _firstPersonRegistered{ false };
         bool _playerYawRegistered{ false };
+        bool _firstPersonTelemetryRegistered{ false };
         bool _smoothingRemovalRegistered{ false };
         mutable std::mutex _policyLock;
         CompatibilityPolicy _activePolicy{};
-        std::atomic<std::uint8_t> _policyFlags{ 0x07 };
+        std::atomic<std::uint8_t> _policyFlags{ 0x03 };
     };
 }
