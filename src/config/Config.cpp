@@ -1,6 +1,7 @@
 #include "MouseSensitivityFix/Config.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <utility>
@@ -35,7 +36,11 @@ namespace
     double ParseDouble(const std::string& value, double fallback)
     {
         try {
-            return std::stod(Trim(value));
+            const double parsed = std::stod(Trim(value));
+            if (!std::isfinite(parsed)) {
+                return fallback;
+            }
+            return parsed;
         } catch (...) {
             return fallback;
         }
@@ -48,6 +53,11 @@ namespace
         } catch (...) {
             return fallback;
         }
+    }
+
+    double FiniteOr(double value, double fallback) noexcept
+    {
+        return std::isfinite(value) ? value : fallback;
     }
 }
 
@@ -87,6 +97,16 @@ namespace msf
             loaded = _values;
         }
 
+        bool sawReplacementCompatibilityKey = false;
+        bool sawLegacyCompatibilityKey = false;
+        bool legacyUsePresets = true;
+        bool legacyPresetImprovedCamera = true;
+        bool legacyPresetSmoothCam = true;
+        bool legacyDelegateSmoothCam = true;
+        bool legacyDelegateImprovedCamera = true;
+        bool legacyForceOverrideSmoothCam = false;
+        bool legacyForceOverrideImprovedCamera = false;
+
         std::string line;
         while (std::getline(input, line)) {
             if (line.empty() || line[0] == ';' || line[0] == '#') {
@@ -107,7 +127,10 @@ namespace msf
             if (key == "bEnabled") {
                 loaded.enabled = ParseBool(value, loaded.enabled);
             } else if (key == "bHotDisable") {
-                loaded.hotDisable = ParseBool(value, loaded.hotDisable);
+                // Preserve the old emergency-disable behavior during upgrades.
+                if (ParseBool(value, false)) {
+                    loaded.enabled = false;
+                }
             } else if (key == "bVerboseLogging") {
                 loaded.verboseLogging = ParseBool(value, loaded.verboseLogging);
             } else if (key == "bEnableFirstPersonHook") {
@@ -126,20 +149,31 @@ namespace msf
                 loaded.suppressFocusSpike = ParseBool(value, loaded.suppressFocusSpike);
             } else if (key == "iFocusSpikeGapMs") {
                 loaded.focusSpikeGapMs = std::clamp(ParseInt(value, loaded.focusSpikeGapMs), 50, 5000);
+            } else if (key == "bKeepThirdPersonSmoothingRemovalWithCameraMods") {
+                sawReplacementCompatibilityKey = true;
+                loaded.keepThirdPersonSmoothingRemovalWithCameraMods =
+                    ParseBool(value, loaded.keepThirdPersonSmoothingRemovalWithCameraMods);
             } else if (key == "bUseCompatibilityPresets") {
-                loaded.useCompatibilityPresets = ParseBool(value, loaded.useCompatibilityPresets);
+                sawLegacyCompatibilityKey = true;
+                legacyUsePresets = ParseBool(value, legacyUsePresets);
             } else if (key == "bPresetImprovedCamera") {
-                loaded.presetImprovedCamera = ParseBool(value, loaded.presetImprovedCamera);
+                sawLegacyCompatibilityKey = true;
+                legacyPresetImprovedCamera = ParseBool(value, legacyPresetImprovedCamera);
             } else if (key == "bPresetSmoothCam") {
-                loaded.presetSmoothCam = ParseBool(value, loaded.presetSmoothCam);
+                sawLegacyCompatibilityKey = true;
+                legacyPresetSmoothCam = ParseBool(value, legacyPresetSmoothCam);
             } else if (key == "bDelegateThirdPersonWhenSmoothCam") {
-                loaded.delegateThirdPersonWhenSmoothCam = ParseBool(value, loaded.delegateThirdPersonWhenSmoothCam);
+                sawLegacyCompatibilityKey = true;
+                legacyDelegateSmoothCam = ParseBool(value, legacyDelegateSmoothCam);
             } else if (key == "bDelegateThirdPersonWhenImprovedCamera") {
-                loaded.delegateThirdPersonWhenImprovedCamera = ParseBool(value, loaded.delegateThirdPersonWhenImprovedCamera);
+                sawLegacyCompatibilityKey = true;
+                legacyDelegateImprovedCamera = ParseBool(value, legacyDelegateImprovedCamera);
             } else if (key == "bForceOverrideSmoothCam") {
-                loaded.forceOverrideSmoothCam = ParseBool(value, loaded.forceOverrideSmoothCam);
+                sawLegacyCompatibilityKey = true;
+                legacyForceOverrideSmoothCam = ParseBool(value, legacyForceOverrideSmoothCam);
             } else if (key == "bForceOverrideImprovedCamera") {
-                loaded.forceOverrideImprovedCamera = ParseBool(value, loaded.forceOverrideImprovedCamera);
+                sawLegacyCompatibilityKey = true;
+                legacyForceOverrideImprovedCamera = ParseBool(value, legacyForceOverrideImprovedCamera);
             } else if (key == "fGlobalSensitivity") {
                 loaded.globalSensitivity = std::clamp(ParseDouble(value, loaded.globalSensitivity), 0.01, 20.0);
             } else if (key == "fMouseXAxisMultiplier") {
@@ -161,6 +195,21 @@ namespace msf
             }
         }
 
+        if (!sawReplacementCompatibilityKey && sawLegacyCompatibilityKey) {
+            const bool delegatedSmoothCam =
+                legacyUsePresets &&
+                legacyPresetSmoothCam &&
+                legacyDelegateSmoothCam &&
+                !legacyForceOverrideSmoothCam;
+            const bool delegatedImprovedCamera =
+                legacyUsePresets &&
+                legacyPresetImprovedCamera &&
+                legacyDelegateImprovedCamera &&
+                !legacyForceOverrideImprovedCamera;
+            loaded.keepThirdPersonSmoothingRemovalWithCameraMods =
+                !(delegatedSmoothCam || delegatedImprovedCamera);
+        }
+
         std::error_code ec;
         const auto writeTime = std::filesystem::last_write_time(iniPath, ec);
         ChangeCallback callback;
@@ -168,7 +217,11 @@ namespace msf
             std::scoped_lock guard(_lock);
             _values = loaded;
             _configPath = iniPath;
-            _lastWriteTime = ec ? std::optional<std::filesystem::file_time_type>{} : std::make_optional(writeTime);
+            // On mtime failure keep prior tracking so ReloadIfChanged does not
+            // treat every 250ms poll as dirty once mtime becomes readable again.
+            if (!ec) {
+                _lastWriteTime = writeTime;
+            }
             callback = _changeCallback;
         }
         if (callback) {
@@ -188,34 +241,28 @@ namespace msf
 
         output << "[General]\n";
         output << "bEnabled=" << (_values.enabled ? "true" : "false") << "\n";
-        output << "bHotDisable=" << (_values.hotDisable ? "true" : "false") << "\n";
         output << "fGlobalSensitivity=" << _values.globalSensitivity << "\n";
-        output << "bEnableFirstPersonHook=" << (_values.enableFirstPersonHook ? "true" : "false") << "\n";
-        output << "bEnableThirdPersonHook=" << (_values.enableThirdPersonHook ? "true" : "false") << "\n";
-        output << "bEnableSmoothingRemovalHook=" << (_values.enableSmoothingRemovalHook ? "true" : "false") << "\n";
-        output << "bDisableInMenus=" << (_values.disableInMenus ? "true" : "false") << "\n";
-        output << "bDisableWhenLookControlsDisabled=" << (_values.disableWhenLookControlsDisabled ? "true" : "false") << "\n";
-        output << "bAffectGamepadLook=" << (_values.affectGamepadLook ? "true" : "false") << "\n";
-        output << "bSuppressFocusSpike=" << (_values.suppressFocusSpike ? "true" : "false") << "\n";
-        output << "iFocusSpikeGapMs=" << _values.focusSpikeGapMs << "\n";
-        output << "[Advanced]\n";
         output << "fMouseXAxisMultiplier=" << _values.mouseXAxisMultiplier << "\n";
         output << "fMouseYAxisMultiplier=" << _values.mouseYAxisMultiplier << "\n";
         output << "fGamepadXAxisMultiplier=" << _values.gamepadXAxisMultiplier << "\n";
         output << "fGamepadYAxisMultiplier=" << _values.gamepadYAxisMultiplier << "\n";
+        output << "bEnableSmoothingRemovalHook=" << (_values.enableSmoothingRemovalHook ? "true" : "false") << "\n";
+        output << "bSuppressFocusSpike=" << (_values.suppressFocusSpike ? "true" : "false") << "\n";
+        output << "bAffectGamepadLook=" << (_values.affectGamepadLook ? "true" : "false") << "\n";
+        output << "[Advanced]\n";
+        output << "bEnableFirstPersonHook=" << (_values.enableFirstPersonHook ? "true" : "false") << "\n";
+        output << "bEnableThirdPersonHook=" << (_values.enableThirdPersonHook ? "true" : "false") << "\n";
+        output << "bDisableInMenus=" << (_values.disableInMenus ? "true" : "false") << "\n";
+        output << "bDisableWhenLookControlsDisabled=" << (_values.disableWhenLookControlsDisabled ? "true" : "false") << "\n";
+        output << "iFocusSpikeGapMs=" << _values.focusSpikeGapMs << "\n";
         output << "fBowAimMouseXMultiplier=" << _values.bowAimMouseXMultiplier << "\n";
         output << "fBowAimMouseYMultiplier=" << _values.bowAimMouseYMultiplier << "\n";
         output << "fBowAimGamepadXMultiplier=" << _values.bowAimGamepadXMultiplier << "\n";
         output << "fBowAimGamepadYMultiplier=" << _values.bowAimGamepadYMultiplier << "\n";
         output << "bVerboseLogging=" << (_values.verboseLogging ? "true" : "false") << "\n";
         output << "[Compatibility]\n";
-        output << "bUseCompatibilityPresets=" << (_values.useCompatibilityPresets ? "true" : "false") << "\n";
-        output << "bPresetImprovedCamera=" << (_values.presetImprovedCamera ? "true" : "false") << "\n";
-        output << "bPresetSmoothCam=" << (_values.presetSmoothCam ? "true" : "false") << "\n";
-        output << "bDelegateThirdPersonWhenSmoothCam=" << (_values.delegateThirdPersonWhenSmoothCam ? "true" : "false") << "\n";
-        output << "bDelegateThirdPersonWhenImprovedCamera=" << (_values.delegateThirdPersonWhenImprovedCamera ? "true" : "false") << "\n";
-        output << "bForceOverrideSmoothCam=" << (_values.forceOverrideSmoothCam ? "true" : "false") << "\n";
-        output << "bForceOverrideImprovedCamera=" << (_values.forceOverrideImprovedCamera ? "true" : "false") << "\n";
+        output << "bKeepThirdPersonSmoothingRemovalWithCameraMods="
+               << (_values.keepThirdPersonSmoothingRemovalWithCameraMods ? "true" : "false") << "\n";
 
         output.flush();
         if (!output) {
@@ -224,7 +271,9 @@ namespace msf
 
         std::error_code ec;
         const auto writeTime = std::filesystem::last_write_time(iniPath, ec);
-        _lastWriteTime = ec ? std::optional<std::filesystem::file_time_type>{} : std::make_optional(writeTime);
+        if (!ec) {
+            _lastWriteTime = writeTime;
+        }
         return true;
     }
 
@@ -270,17 +319,32 @@ namespace msf
     void ConfigManager::ApplyUiUpdate(const ConfigValues& updatedValues)
     {
         std::scoped_lock notificationGuard(_notificationLock);
+        ConfigValues previous;
+        {
+            std::scoped_lock guard(_lock);
+            previous = _values;
+        }
+
         auto normalized = updatedValues;
         normalized.focusSpikeGapMs = std::clamp(normalized.focusSpikeGapMs, 50, 5000);
-        normalized.globalSensitivity = std::clamp(normalized.globalSensitivity, 0.01, 20.0);
-        normalized.mouseXAxisMultiplier = std::clamp(normalized.mouseXAxisMultiplier, 0.01, 20.0);
-        normalized.mouseYAxisMultiplier = std::clamp(normalized.mouseYAxisMultiplier, 0.01, 20.0);
-        normalized.gamepadXAxisMultiplier = std::clamp(normalized.gamepadXAxisMultiplier, 0.01, 20.0);
-        normalized.gamepadYAxisMultiplier = std::clamp(normalized.gamepadYAxisMultiplier, 0.01, 20.0);
-        normalized.bowAimMouseXMultiplier = std::clamp(normalized.bowAimMouseXMultiplier, 0.01, 20.0);
-        normalized.bowAimMouseYMultiplier = std::clamp(normalized.bowAimMouseYMultiplier, 0.01, 20.0);
-        normalized.bowAimGamepadXMultiplier = std::clamp(normalized.bowAimGamepadXMultiplier, 0.01, 20.0);
-        normalized.bowAimGamepadYMultiplier = std::clamp(normalized.bowAimGamepadYMultiplier, 0.01, 20.0);
+        normalized.globalSensitivity = std::clamp(
+            FiniteOr(normalized.globalSensitivity, previous.globalSensitivity), 0.01, 20.0);
+        normalized.mouseXAxisMultiplier = std::clamp(
+            FiniteOr(normalized.mouseXAxisMultiplier, previous.mouseXAxisMultiplier), 0.01, 20.0);
+        normalized.mouseYAxisMultiplier = std::clamp(
+            FiniteOr(normalized.mouseYAxisMultiplier, previous.mouseYAxisMultiplier), 0.01, 20.0);
+        normalized.gamepadXAxisMultiplier = std::clamp(
+            FiniteOr(normalized.gamepadXAxisMultiplier, previous.gamepadXAxisMultiplier), 0.01, 20.0);
+        normalized.gamepadYAxisMultiplier = std::clamp(
+            FiniteOr(normalized.gamepadYAxisMultiplier, previous.gamepadYAxisMultiplier), 0.01, 20.0);
+        normalized.bowAimMouseXMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimMouseXMultiplier, previous.bowAimMouseXMultiplier), 0.01, 20.0);
+        normalized.bowAimMouseYMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimMouseYMultiplier, previous.bowAimMouseYMultiplier), 0.01, 20.0);
+        normalized.bowAimGamepadXMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimGamepadXMultiplier, previous.bowAimGamepadXMultiplier), 0.01, 20.0);
+        normalized.bowAimGamepadYMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimGamepadYMultiplier, previous.bowAimGamepadYMultiplier), 0.01, 20.0);
 
         ChangeCallback callback;
         {

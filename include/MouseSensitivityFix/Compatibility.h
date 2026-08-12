@@ -17,7 +17,8 @@ namespace msf
     {
         CompatibilityMode mode{ CompatibilityMode::Safe };
         bool installInputHooks{ true };
-        bool installSmoothingRemovalHooks{ true };
+        // Single gate for third-person smoothing removal. Sensitivity transforms
+        // remain governed by installInputHooks / config toggles separately.
         bool allowThirdPersonSmoothingIntervention{ true };
         std::string reason;
     };

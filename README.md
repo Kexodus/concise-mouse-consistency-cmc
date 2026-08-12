@@ -9,8 +9,8 @@ It keeps mouse and gamepad look sensitivity consistent across camera states and 
 - Global sensitivity scaling
 - Independent mouse and gamepad X/Y scaling
 - First-person, third-person, and bow/crossbow aim controls
-- Freelook-equivalent horizontal and vertical mouse response during bow aim and Eagle Eye zoom
-- Selective first-person half-rate yaw correction for sprinting and bow aim that preserves normal and transition frames
+- First-person bow pitch normalization against the measured freelook gain
+- Selective first-person half-rate yaw restoration plus Eagle Eye slow-time compensation; fresh `0.1.4` runtime validation is tracked in `docs/RUNTIME_VALIDATION.md`
 - Optional gamepad look support with right-stick filtering
 - Alt-tab focus-spike suppression
 - Live INI reload and runtime-safe enable/disable behavior

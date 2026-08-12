@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.4] - 2026-08-12
+
+### Fixed
+
+- Restored Eagle Eye horizontal wall-clock sensitivity by compensating the final first-person yaw for Skyrim's active slow-time multiplier after the guarded half-rate correction.
+- Normalized first-person pitch targets against a frozen true-freelook baseline while preserving zero-input holds and camera-override resets.
+- Kept third-person camera behavior passive after rejecting the experimental third-person pitch normalizer, including preserving bow gamepad multipliers in both perspectives.
+
+### Changed
+
+- Simplified camera-mod compatibility to one live option controlling whether CMC keeps third-person smoothing removal, with safe migration of legacy settings.
+- Expanded release tests for exact slow-time boundaries, composed Eagle Eye yaw correction, gamepad parity, camera-stack policy, and INI persistence.
+- Removed development-only per-frame file telemetry and kept rendered-frustum/orientation diagnostics behind sampled verbose logging.
+
 ## [0.1.3] - 2026-08-09
 
 ### Fixed

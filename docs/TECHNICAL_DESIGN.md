@@ -12,7 +12,7 @@ CMC has four parts:
 2. **Hooks**
    - permanently installed mouse/gamepad look interception
    - sensitivity transform and smoothing-related handling
-   - selective first-person sprint and bow-aim yaw restoration at final player rotation
+   - selective final-player-rotation yaw correction (FP half-rate restore; FP/TP slow-time compensation)
 3. **Config**
    - INI source of truth
    - throttled live reload, clamped values, and serialized change notifications
@@ -28,7 +28,7 @@ CMC has four parts:
   - `outY = dy * global * mouseYAxisMultiplier` (or `gamepadYAxisMultiplier`)
 - `ApplyTransform` takes an `isGamepad` bool to select the correct multiplier pair
 
-Default mouse multipliers are `1.0`. Default `gamepadYAxisMultiplier` is `0.55` to compensate for Skyrim's FoV asymmetry on ultrawide displays.
+Default mouse and gamepad axis multipliers are `1.0`. Users can lower `gamepadYAxisMultiplier` if vertical look feels too fast.
 
 During bow aim, CMC reconstructs X from raw pixels and a camera-specific freelook sample before applying the configured bow and mouse multipliers. First- and third-person samples are isolated, reset when the camera root changes, update only during true freelook, and require three consistent candidates before an unseeded or changed scale is accepted. Y preserves Skyrim's current engine delta and applies the configured bow and mouse Y multipliers exactly once.
 
@@ -45,25 +45,30 @@ Eagle Eye keeps the same freelook-equivalent input target on both axes. The rend
 
 This keeps live enable/disable and compatibility override changes safe. Vtables are never patched from inside an input callback, and a partial installation is rolled back before initialization fails.
 
-`PlayerCharacter::ModifyMovementData` receives Skyrim's final first-person yaw delta. During active sprint and bow-aim frames, Skyrim can apply an exact `0.5` movement scale after normal mouse sensitivity processing. CMC restores the expected `lookX * deltaSeconds * pi` result only when the observed scale is within `0.48..0.52`. Full-rate transition frames, third-person look, disabled states, and zero-input frames pass through unchanged.
+`PlayerCharacter::ModifyMovementData` receives Skyrim's final yaw delta. Look-correction eligibility is split:
+
+- **Half-rate restore** (`restoreHalfRateYaw`): first-person while looking. CMC restores `lookX * deltaSeconds * pi` only when the observed scale is within `0.48..0.52` (orphan/cast needs two consecutive band hits; sprint/bow may restore on the first). Sprint/bow/casting are telemetry hints, not sole eligibility gates. Freelook yaw EMA rejects half-scale and casting samples.
+- **Slow-time compensation** (`compensateTimeYaw`): when the live `BSTimer::QGlobalTimeMultiplier` **Current** value (`RELOCATION_ID(511882, 388442)`) is in `(0.05, 0.90)` and the player is looking, multiply yaw by `1/timeMult` in first- or third-person — only when Current is stable and `delta` agrees with `realTimeDelta*Current` (else skip this frame). Do not use CommonLib's `GetCurrentGlobalTimeMult()` helper (it currently points at Target). This is not bow-gated (covers Eagle Eye and other slow-time). Order is always half-rate restore, then time compensation.
+
+Disabled hooks, optional menu/look-control gates, and idle (non-looking) frames leave rotation untouched. Rendered FOV remains diagnostic only.
 
 ## Config model
 
 INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 
-- `[General]` core runtime toggles and sensitivity
-- `[Advanced]` per-device axis multipliers and verbose logging
+- `[General]` core runtime toggles, global sensitivity, per-device axis multipliers, smoothing, focus-spike suppression, and gamepad enablement
+- `[Advanced]` per-camera gates, menu/look-control guards, focus gap, bow multipliers, and verbose logging
 - `iFocusSpikeGapMs` controls focus-regain suppression from 50 to 5000 ms
-- `[Compatibility]` SmoothCam / Improved Camera policy toggles
+- `[Compatibility]` single `bKeepThirdPersonSmoothingRemovalWithCameraMods` toggle
 
 ## Compatibility behavior
 
 Current compatibility policy is intentionally narrow:
 
-- targets SmoothCam + Improved Camera
-- auto-detection drives policy via `_improvedCameraDetected` / `_smoothCamDetected` flags directly; no override fields
-- may delegate third-person smoothing removal to the detected camera mod
-- keeps core sensitivity transform active
+- targets SmoothCam + Improved Camera detection
+- default (`bKeepThirdPersonSmoothingRemovalWithCameraMods=true`): CMC keeps third-person smoothing removal even when those mods are present
+- optional legacy mode (`false`): skip CMC third-person smoothing intervention when SmoothCam or Improved Camera is detected
+- keeps core sensitivity transform active regardless
 
 Compatibility and hook toggles apply immediately. Settings change behavior through atomic gates; they do not mutate hook registrations at runtime.
 

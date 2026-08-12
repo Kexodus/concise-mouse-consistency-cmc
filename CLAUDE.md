@@ -24,7 +24,7 @@ Output: `build-commonlib/Release/MouseSensitivityFix.dll`
 **Deploy for testing:** After every successful build, replace the DLL in the MO2 mod folder. Seed the INI only when the test install does not already have one, so local settings survive rebuilds:
 
 ```bash
-DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC)/SKSE/Plugins"
+DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC) - Raw Mouse Input/SKSE/Plugins"
 
 cp "build-commonlib/Release/MouseSensitivityFix.dll" "$DEPLOY/"
 [ -f "$DEPLOY/MouseSensitivityFix.ini" ] || cp "dist/Data/SKSE/Plugins/MouseSensitivityFix.ini" "$DEPLOY/"
@@ -53,9 +53,10 @@ All hooks use `REL::Relocation` (CommonLibSSE-NG) to patch vtables — no hardco
 | `LookHandler::ProcessThumbstick` | +2 | Gamepad right-stick look |
 | `LookHandler::ProcessMouseMove` | +3 | Mouse look |
 | `PlayerCharacter::ModifyMovementData` | +0x11A | Selective first-person sprint yaw restoration |
-| `ThirdPersonState::HandleLookInput` | +0x0F | Smoothing removal |
+| `FirstPersonState::Update` | +3 | First-person pitch-target normalization |
+| `ThirdPersonState::HandleLookInput` | +0x0F | Smoothing removal + passive TP pitch telemetry |
 
-Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. During bow aim, the mouse path first reconstructs X from raw pixels and the camera-specific freelook sample while preserving the current engine Y delta; rendered FOV remains diagnostic only. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call.
+Each mouse/gamepad hook calls the original function first, then reads `data->lookInputVec` back out, applies `HookCoordinator::ApplyTransform`, and writes it back. During bow aim, the mouse path first reconstructs X from raw pixels and the camera-specific freelook sample while preserving the current engine Y delta; rendered FOV remains diagnostic only. The smoothing hook collapses `currentYaw → targetYaw` and `currentZoomOffset → targetZoomOffset` after the original call. First-person pitch normalization rewrites `FirstPersonState::targetPitchOffset`. Third-person normalization and its extra Update hook were removed after the IC+SmoothCam playtest rejected them; `HandleLookInput` retains passive sampled telemetry.
 
 Transform: `out = delta * globalSensitivity * axisMultiplier`. `ApplyTransform` takes an `isGamepad` bool to select mouse or gamepad multipliers (`mouseX/Y` vs `gamepadX/Y`).
 
@@ -67,7 +68,7 @@ Hook callbacks call `ReloadIfChanged()`, which throttles filesystem polling to o
 
 ### Compatibility (`src/compat/Compatibility.cpp`)
 
-`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. `EvaluatePolicy` may delegate third-person smoothing removal while keeping core sensitivity transforms active. Live changes to `bForceOverrideSmoothCam` and `bForceOverrideImprovedCamera` recompute that policy without reinstalling hooks.
+`CompatibilityManager::ScanInstalledCameraMods` looks for known DLL filenames in `Data/SKSE/Plugins/`. By default CMC keeps third-person smoothing removal even when SmoothCam/Improved Camera are detected; `bKeepThirdPersonSmoothingRemovalWithCameraMods=false` restores legacy reduced-intervention (skip CMC smoothing removal). Live changes recompute that policy without reinstalling hooks. Sensitivity transforms stay active either way.
 
 ## Local-only directories
 
