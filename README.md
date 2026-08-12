@@ -1,21 +1,25 @@
 # Concise Mouse Consistency (CMC)
 
-CMC is a DLL-only SKSE plugin for Skyrim.  
-It keeps mouse and gamepad look sensitivity consistent across camera states and can remove third-person camera interpolation.
+CMC is a DLL-only SKSE plugin for Skyrim SE/AE/GOG/VR.
+It keeps mouse and gamepad look sensitivity consistent across camera states, restores first-person yaw that Skyrim halves or slows, and can remove third-person camera interpolation.
 
 ## What it does
 
 - No ESP/ESL/ESM required
-- Global sensitivity scaling
-- Independent mouse and gamepad X/Y scaling
-- First-person, third-person, and bow/crossbow aim controls
-- First-person bow pitch normalization against the measured freelook gain
-- Selective first-person half-rate yaw restoration plus Eagle Eye slow-time compensation; fresh `0.1.4` runtime validation is tracked in `docs/RUNTIME_VALIDATION.md`
-- Optional gamepad look support with right-stick filtering
+- Global sensitivity scaling with independent mouse and gamepad X/Y multipliers
+- Separate bow/crossbow aim multipliers for mouse and gamepad
+- First-person and third-person look transforms; first-person bow/crossbow aim reconstructs horizontal look from raw pixels
+- First-person pitch normalization to a frozen true-freelook baseline (bow, Eagle Eye, and other non-freelook states)
+- Selective first-person half-rate yaw restoration while looking (sprint, bow aim, and other measured 0.5× states such as casting)
+- Wall-clock yaw compensation during slow-time (Eagle Eye and similar) in first- and third-person
+- Optional third-person smoothing removal
+- Optional gamepad look (right-stick) transforms
 - Alt-tab focus-spike suppression
-- Live INI reload and runtime-safe enable/disable behavior
+- Live INI reload and runtime-safe enable/disable (hooks stay installed; disabled features pass through)
 - In-game settings via SKSE Menu Framework (INI fallback if missing)
-- Compatibility controls for SmoothCam and Improved Camera
+- One SmoothCam / Improved Camera option: keep or skip CMC third-person smoothing removal
+
+CMC does not replace camera mods, apply automatic FOV-based input scaling, or normalize third-person pitch. Third-person with a ranged weapon out uses input transforms and optional smoothing removal only.
 
 ## Runtime requirements
 
@@ -41,7 +45,8 @@ Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md
 
 - INI: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 - UI path: `Concise Mouse Consistency/Settings`
-- UI and external INI edits apply without reinstalling hooks or restarting Skyrim
+- The in-game menu exposes enable, sensitivity, axis multipliers, smoothing removal, focus-spike suppress, gamepad look, and the camera-mod smoothing option. Advanced knobs stay in the INI `[Advanced]` section.
+- UI and external INI edits apply without reinstalling hooks or restarting Skyrim. Use **Save to INI** to persist UI changes.
 - Release logging is quiet by default. Set `bVerboseLogging=true` only when collecting sampled hook counters and rendered-frustum diagnostics.
 
 ## Validation targets
@@ -54,7 +59,7 @@ The codebase produces one CommonLibSSE-NG multi-runtime DLL. Runtime validation 
 - latest supported GOG build
 - VR
 
-See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests.
+See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests. Do not treat a successful build as in-game proof for an untested runtime.
 
 ## Docs
 
