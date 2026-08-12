@@ -1,6 +1,7 @@
 #include "MouseSensitivityFix/Config.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <utility>
@@ -35,7 +36,11 @@ namespace
     double ParseDouble(const std::string& value, double fallback)
     {
         try {
-            return std::stod(Trim(value));
+            const double parsed = std::stod(Trim(value));
+            if (!std::isfinite(parsed)) {
+                return fallback;
+            }
+            return parsed;
         } catch (...) {
             return fallback;
         }
@@ -48,6 +53,11 @@ namespace
         } catch (...) {
             return fallback;
         }
+    }
+
+    double FiniteOr(double value, double fallback) noexcept
+    {
+        return std::isfinite(value) ? value : fallback;
     }
 }
 
@@ -207,7 +217,11 @@ namespace msf
             std::scoped_lock guard(_lock);
             _values = loaded;
             _configPath = iniPath;
-            _lastWriteTime = ec ? std::optional<std::filesystem::file_time_type>{} : std::make_optional(writeTime);
+            // On mtime failure keep prior tracking so ReloadIfChanged does not
+            // treat every 250ms poll as dirty once mtime becomes readable again.
+            if (!ec) {
+                _lastWriteTime = writeTime;
+            }
             callback = _changeCallback;
         }
         if (callback) {
@@ -257,7 +271,9 @@ namespace msf
 
         std::error_code ec;
         const auto writeTime = std::filesystem::last_write_time(iniPath, ec);
-        _lastWriteTime = ec ? std::optional<std::filesystem::file_time_type>{} : std::make_optional(writeTime);
+        if (!ec) {
+            _lastWriteTime = writeTime;
+        }
         return true;
     }
 
@@ -303,17 +319,32 @@ namespace msf
     void ConfigManager::ApplyUiUpdate(const ConfigValues& updatedValues)
     {
         std::scoped_lock notificationGuard(_notificationLock);
+        ConfigValues previous;
+        {
+            std::scoped_lock guard(_lock);
+            previous = _values;
+        }
+
         auto normalized = updatedValues;
         normalized.focusSpikeGapMs = std::clamp(normalized.focusSpikeGapMs, 50, 5000);
-        normalized.globalSensitivity = std::clamp(normalized.globalSensitivity, 0.01, 20.0);
-        normalized.mouseXAxisMultiplier = std::clamp(normalized.mouseXAxisMultiplier, 0.01, 20.0);
-        normalized.mouseYAxisMultiplier = std::clamp(normalized.mouseYAxisMultiplier, 0.01, 20.0);
-        normalized.gamepadXAxisMultiplier = std::clamp(normalized.gamepadXAxisMultiplier, 0.01, 20.0);
-        normalized.gamepadYAxisMultiplier = std::clamp(normalized.gamepadYAxisMultiplier, 0.01, 20.0);
-        normalized.bowAimMouseXMultiplier = std::clamp(normalized.bowAimMouseXMultiplier, 0.01, 20.0);
-        normalized.bowAimMouseYMultiplier = std::clamp(normalized.bowAimMouseYMultiplier, 0.01, 20.0);
-        normalized.bowAimGamepadXMultiplier = std::clamp(normalized.bowAimGamepadXMultiplier, 0.01, 20.0);
-        normalized.bowAimGamepadYMultiplier = std::clamp(normalized.bowAimGamepadYMultiplier, 0.01, 20.0);
+        normalized.globalSensitivity = std::clamp(
+            FiniteOr(normalized.globalSensitivity, previous.globalSensitivity), 0.01, 20.0);
+        normalized.mouseXAxisMultiplier = std::clamp(
+            FiniteOr(normalized.mouseXAxisMultiplier, previous.mouseXAxisMultiplier), 0.01, 20.0);
+        normalized.mouseYAxisMultiplier = std::clamp(
+            FiniteOr(normalized.mouseYAxisMultiplier, previous.mouseYAxisMultiplier), 0.01, 20.0);
+        normalized.gamepadXAxisMultiplier = std::clamp(
+            FiniteOr(normalized.gamepadXAxisMultiplier, previous.gamepadXAxisMultiplier), 0.01, 20.0);
+        normalized.gamepadYAxisMultiplier = std::clamp(
+            FiniteOr(normalized.gamepadYAxisMultiplier, previous.gamepadYAxisMultiplier), 0.01, 20.0);
+        normalized.bowAimMouseXMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimMouseXMultiplier, previous.bowAimMouseXMultiplier), 0.01, 20.0);
+        normalized.bowAimMouseYMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimMouseYMultiplier, previous.bowAimMouseYMultiplier), 0.01, 20.0);
+        normalized.bowAimGamepadXMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimGamepadXMultiplier, previous.bowAimGamepadXMultiplier), 0.01, 20.0);
+        normalized.bowAimGamepadYMultiplier = std::clamp(
+            FiniteOr(normalized.bowAimGamepadYMultiplier, previous.bowAimGamepadYMultiplier), 0.01, 20.0);
 
         ChangeCallback callback;
         {
