@@ -24,7 +24,7 @@ Output: `build-commonlib/Release/MouseSensitivityFix.dll`
 **Deploy for testing:** After every successful build, replace the DLL in the MO2 mod folder. Seed the INI only when the test install does not already have one, so local settings survive rebuilds:
 
 ```bash
-DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC)/SKSE/Plugins"
+DEPLOY="E:/modding/Kexodus Skyrim/mods/Concise Mouse Consistency (CMC) - Raw Mouse Input/SKSE/Plugins"
 
 cp "build-commonlib/Release/MouseSensitivityFix.dll" "$DEPLOY/"
 [ -f "$DEPLOY/MouseSensitivityFix.ini" ] || cp "dist/Data/SKSE/Plugins/MouseSensitivityFix.ini" "$DEPLOY/"

@@ -32,6 +32,8 @@ Validate in first-person and third-person:
 - entering and leaving sprint does not produce a doubled transition frame
 - horizontal and vertical sensitivity remain matched while drawing a bow and during Eagle Eye zoom
 - during fully zoomed Eagle Eye, confirm `timeMult≈0.25`, `timeComp=1`, and `yawRatioToFreelook≈1.0` (wall-clock match after slow-time compensation)
+- enter and exit Eagle Eye zoom while looking horizontally; confirm transitions do not spike X (expect `YawTimeCompSkip` / `timeComp=0` while dilated but disagreeing, then settled `timeComp=1` again)
+- dual-cast hold in first-person freelook: confirm `casting=1`, half-rate restore when `observedScale≈0.5`, and `freelookYawPerLook` does not drop to ~half after releasing cast
 - make separate one-direction X and Y sweeps in freelook, bow pull, and fully zoomed Eagle Eye
 - confirm `FinalAxisResponse` correlates each raw/input window with final pitch and yaw orientation changes
 - confirm `normalizedTargetPitchDelta / outY` stays equal to the frozen freelook baseline across bow pull, Eagle Eye transitions, and fully settled Eagle Eye

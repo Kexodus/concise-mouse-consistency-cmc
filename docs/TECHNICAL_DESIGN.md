@@ -12,7 +12,7 @@ CMC has four parts:
 2. **Hooks**
    - permanently installed mouse/gamepad look interception
    - sensitivity transform and smoothing-related handling
-   - selective first-person sprint and bow-aim yaw restoration at final player rotation
+   - selective final-player-rotation yaw correction (FP half-rate restore; FP/TP slow-time compensation)
 3. **Config**
    - INI source of truth
    - throttled live reload, clamped values, and serialized change notifications
@@ -45,7 +45,12 @@ Eagle Eye keeps the same freelook-equivalent input target on both axes. The rend
 
 This keeps live enable/disable and compatibility override changes safe. Vtables are never patched from inside an input callback, and a partial installation is rolled back before initialization fails.
 
-`PlayerCharacter::ModifyMovementData` receives Skyrim's final first-person yaw delta. During active sprint and bow-aim frames, Skyrim can apply an exact `0.5` movement scale after normal mouse sensitivity processing. CMC restores the expected `lookX * deltaSeconds * pi` result only when the observed scale is within `0.48..0.52`. Full-rate transition frames, third-person look, disabled states, and zero-input frames pass through unchanged.
+`PlayerCharacter::ModifyMovementData` receives Skyrim's final yaw delta. Look-correction eligibility is split:
+
+- **Half-rate restore** (`restoreHalfRateYaw`): first-person while looking. CMC restores `lookX * deltaSeconds * pi` only when the observed scale is within `0.48..0.52` (orphan/cast needs two consecutive band hits; sprint/bow may restore on the first). Sprint/bow/casting are telemetry hints, not sole eligibility gates. Freelook yaw EMA rejects half-scale and casting samples.
+- **Slow-time compensation** (`compensateTimeYaw`): when the live `BSTimer::QGlobalTimeMultiplier` **Current** value (`RELOCATION_ID(511882, 388442)`) is in `(0.05, 0.90)` and the player is looking, multiply yaw by `1/timeMult` in first- or third-person — only when Current is stable and `delta` agrees with `realTimeDelta*Current` (else skip this frame). Do not use CommonLib's `GetCurrentGlobalTimeMult()` helper (it currently points at Target). This is not bow-gated (covers Eagle Eye and other slow-time). Order is always half-rate restore, then time compensation.
+
+Disabled hooks, optional menu/look-control gates, and idle (non-looking) frames leave rotation untouched. Rendered FOV remains diagnostic only.
 
 ## Config model
 

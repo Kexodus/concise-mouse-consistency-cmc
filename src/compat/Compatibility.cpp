@@ -2,9 +2,9 @@
 #include "MouseSensitivityFix/Log.h"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <filesystem>
+#include <initializer_list>
 #include <set>
 #include <sstream>
 #include <string>
@@ -40,7 +40,9 @@ namespace
         return entries;
     }
 
-    bool ContainsAny(const std::set<std::string>& installed, const std::array<const char*, 6>& signatures)
+    bool ContainsAny(
+        const std::set<std::string>& installed,
+        std::initializer_list<const char*> signatures)
     {
         for (const auto* signature : signatures) {
             if (installed.contains(ToLower(signature))) {
@@ -67,10 +69,14 @@ namespace msf
             "ImprovedCameraSE-NG.dll"
         });
 
+        // Release package names from mwilsnd/SkyrimSE-SmoothCam: SmoothCamSSE.dll,
+        // SmoothCamAE.dll, SmoothCamAEPre629.dll. SmoothCam.dll is the local build name.
+        // SmoothCamSE.dll is not a real package artifact.
         _smoothCamDetected = ContainsAny(installedDlls, {
             "SmoothCam.dll",
-            "SmoothCamSE.dll",
+            "SmoothCamSSE.dll",
             "SmoothCamAE.dll",
+            "SmoothCamAEPre629.dll",
             "SmoothCamVR.dll",
             "SmoothCamNG.dll",
             "TrueDirectionalMovement-SmoothCam.dll"
