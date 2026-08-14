@@ -45,7 +45,7 @@ Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md
 
 - INI: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 - UI path: `Concise Mouse Consistency/Settings`
-- The in-game menu exposes enable, sensitivity, axis multipliers, smoothing removal, focus-spike suppress, gamepad look, and the camera-mod smoothing option. Advanced knobs stay in the INI `[Advanced]` section.
+- The in-game menu exposes enable, sensitivity, axis multipliers, first-person mouse bow X/Y, smoothing removal, focus-spike suppress, gamepad look, and the camera-mod smoothing option. Gamepad bow multipliers and other advanced knobs stay in the INI `[Advanced]` section.
 - UI and external INI edits apply without reinstalling hooks or restarting Skyrim. Use **Save to INI** to persist UI changes.
 - Release logging is quiet by default. Set `bVerboseLogging=true` only when collecting sampled hook counters and rendered-frustum diagnostics.
 

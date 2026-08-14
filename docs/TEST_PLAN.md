@@ -7,6 +7,8 @@ Project: **Concise Mouse Consistency (CMC)**.
 - Run dependency-free checks with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 - Run the same tests against the full dependency graph with `ctest --preset plugin-release`.
 - Confirm tests cover transforms, runtime gates, live compatibility-policy changes, INI parsing/clamping/save/reload, case-insensitive DLL detection, and serialized config callbacks.
+- Confirm hook-faithful yaw composition uses `EvaluateLookCorrectionPolicy` → streak/`ShouldApplyHalfRateRestore` → `ResolveTimeCompMode` → `ApplyPlayerYawCorrection` (mode overload): settled Eagle Eye `ScaleByCurrent`, ramp disagree `RewriteWallClock`, half-rate+rewrite is full wall-clock, and orphan/cast restore after two consecutive in-band frames.
+- Confirm the pitch baseline freezes after three true-freelook samples, look APIs do not take a FOV multiplier, focus-spike suppression zeros only the first event after the gap, `ReloadIfChanged` is throttled to 250 ms, and unsaved UI snapshots are not overwritten by disk reload.
 - Confirm half-rate yaw tests cover the `0.48..0.52` correction window, both yaw directions, boundary values, nearby non-matching scales, sprint and bow eligibility, disabled eligibility, zero input, and zero frame delta.
 - Confirm time-dilated yaw compensation boosts only when `globalTimeMult` is in `(0.05, 0.90)`, leaves near-1.0 untouched, and restores Eagle Eye wall-clock yaw after half-rate restore.
 - Confirm bow Y tests preserve Skyrim's current engine delta and apply only the configured bow and mouse Y multipliers.
@@ -32,7 +34,7 @@ Validate in first-person and third-person:
 - entering and leaving sprint does not produce a doubled transition frame
 - horizontal and vertical sensitivity remain matched while drawing a bow and during Eagle Eye zoom
 - during fully zoomed Eagle Eye, confirm `timeMult≈0.25`, `timeComp=1`, and `yawRatioToFreelook≈1.0` (wall-clock match after slow-time compensation)
-- enter and exit Eagle Eye zoom while looking horizontally; confirm transitions do not spike X (expect `YawTimeCompSkip` / `timeComp=0` while dilated but disagreeing, then settled `timeComp=1` again)
+- enter and exit Eagle Eye zoom while looking horizontally; confirm transitions do not leave X at ~0.28× wall (expect `YawTimeCompWallRewrite` / `timeComp=1` `mode=wall` while dilated but disagreeing, then settled `timeComp=1` `mode=scale`; do **not** expect `YawTimeCompSkip` / `timeComp=0` on disagree when `rtd` is valid)
 - dual-cast hold in first-person freelook: confirm `casting=1`, half-rate restore when `observedScale≈0.5`, and `freelookYawPerLook` does not drop to ~half after releasing cast
 - make separate one-direction X and Y sweeps in freelook, bow pull, and fully zoomed Eagle Eye
 - confirm `FinalAxisResponse` correlates each raw/input window with final pitch and yaw orientation changes

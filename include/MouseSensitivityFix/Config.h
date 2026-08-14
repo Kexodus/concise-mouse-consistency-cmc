@@ -53,6 +53,7 @@ namespace msf
 
         ConfigValues GetSnapshot() const;
         void ApplyUiUpdate(const ConfigValues& updatedValues);
+        bool HasUnsavedChanges() const;
 
     private:
         mutable std::mutex _lock;
@@ -61,6 +62,9 @@ namespace msf
         mutable std::filesystem::path _configPath{};
         mutable std::optional<std::filesystem::file_time_type> _lastWriteTime{};
         std::chrono::steady_clock::time_point _lastReloadPoll{};
+        mutable bool _dirty{ false };
         ChangeCallback _changeCallback{};
     };
+
+    int ClampFocusSpikeGapMs(int value) noexcept;
 }

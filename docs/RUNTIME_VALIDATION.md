@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed through `0.1.3`; `0.1.4` pending | Sprint, bow, and pre-slow-time Eagle Eye behavior were validated through the `0.1.3` development series. The `0.1.4` code and package checks pass, but the latest available CMC log contains `eagleEyeFrames=0`; a fresh Eagle Eye run must still prove `timeMult≈0.25`, `timeComp=1`, and `yawRatioToFreelook≈1.0`. |
+| `1.6.1170` | Steam AE | Passed `0.53b` playtest | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. See playtest evidence below. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
 | VR | Steam VR | Pending | No VR runtime is installed in the current test environment. Do not advertise validated VR support until this row passes. |
 
@@ -70,6 +70,24 @@ The release build composes the guarded half-rate yaw restoration with `1/globalT
 - DLL: 523,776 bytes, SHA-256 `42C2EF9D2CA804656CEC416BE9384B56FB0C10922518B373E4418937B9EC8AF6`
 - ZIP: 215,187 bytes, SHA-256 `359A0CCB01AD7F1682CF2C2F81E42410AF1E9EB261821B6E1FA59B41EB13F5FC`
 - Runtime status: pending. The latest available CMC log records no Eagle Eye frames, so it cannot validate the new slow-time branch.
+
+### 2026-08-14 `0.53b` playtest (Steam `1.6.1170`)
+
+Session `14:34:43`–`14:39:16` in `MouseSensitivityFix.log`. SKSE 2.2.6 (`01064920` = 1.6.1170). `ImprovedCamera=yes SmoothCam=yes`. CrashLogger loaded; no crash dump from this session. SKSE loaded `MouseSensitivityFix.dll` correctly (handle 136). Playtest binary still identified as `version=0.1.4` `bytes=543744` (pre-bump); markers included `eagleEyeFovBoth=0 axisParity=1 timeCompWallRewrite=1 bowAimMouseFirstPersonOnly=1 thirdPersonPitchNormalize=0`. All four hooks installed; UI bridge registered; `Initialization complete`. No CMC errors or warnings.
+
+Covered: first- and third-person freelook, bow out/pull, Eagle Eye enter/exit, UI Save to INI with live FP bow multipliers (`bowY=0.35` then restored), dual-cast freelook. No `ProcessThumbstick` samples (gamepad unused).
+
+- Settled Eagle Eye: `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997227`
+- EE transitions: `YawTimeCompWallRewrite skipReason=disagree` (ramp `agree≈0.28`, collapsed `agree≈3.35`); no `YawTimeCompSkip`
+- FP pitch after EE settle: `pitchNormalized=1` with `normalizedTargetPitchDelta/outY = freelookPitchPerLook=0.079554` while `engineTargetPitchDelta` diverged (e.g. `11.50` vs requested `-1.35` at ~44° VFOV)
+- TP: every `ThirdPersonFinalAxisResponse` had `pitchNormalized=0`; smoothing `smoothingRemoved=600/600`
+- FP-only reconstruct: after UI bow `0.35`, FP `bowPull` `out=engine*0.35`; TP `bowPull` stayed `out=engine` (`bowY=1`)
+- Casting: `casting=1 halfRate=1 observedScale=0.500` restored yaw; `freelookYawPerLook` stayed ≈`0.052`
+
+CPack generated `Concise-Mouse-Consistency-0.53b.zip` with only `Data/SKSE/Plugins/MouseSensitivityFix.dll`, `Data/SKSE/Plugins/MouseSensitivityFix.ini`, `README.md`, and `CHANGELOG.md`. Extracted DLL hash matches the build output. Packaged and dist INIs both have `bVerboseLogging=false`. The DLL was copied to the MO2 mod folder; the existing playtest INI was left in place.
+
+- DLL: 543,744 bytes, SHA-256 `910B83FBB2AAFB524B839D688DE07938A2155B942712697832E2DF5DB3EA0A63`
+- ZIP: 224,799 bytes, SHA-256 `F2B89279A5815EECA1E08F7954BCA5F98748FED0BAFBC58283A81B40CB812402`
 
 ## Evidence required for a pass
 

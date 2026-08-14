@@ -28,7 +28,8 @@ namespace
         }
 
         for (const auto& dirEntry : std::filesystem::directory_iterator(directory, ec)) {
-            if (ec || !dirEntry.is_regular_file(ec)) {
+            std::error_code fileEc;
+            if (!dirEntry.is_regular_file(fileEc) || fileEc) {
                 continue;
             }
 
