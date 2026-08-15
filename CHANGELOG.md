@@ -2,10 +2,11 @@
 
 ## [Unreleased]
 
-## [0.53b] - 2026-08-14
+## [0.53] - 2026-08-14
 
 ### Changed
 
+- Promoted the playtested 0.53b Nexus beta to public 0.53.
 - Restored first-person mouse bow X/Y controls on the SKSE Menu Framework settings page. Labels match FP-only reconstruct (1.0 = freelook-equivalent X; Y multiplies live engine delta; no zoom/FOV scaling). Gamepad bow multipliers stay INI-only.
 - Save to INI writes a temp file then replaces the destination, and regenerates comments so the first UI save cannot leave an empty or comment-stripped INI.
 - Unsaved live UI values are not overwritten by throttled disk reload; further slider edits after Save return to the “Changes apply immediately…” prompt.

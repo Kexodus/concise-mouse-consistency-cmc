@@ -7,7 +7,7 @@ project(
 )
 
 # CMake VERSION is numeric; ZIP name and BuildIdentity use this public identity.
-set(MSF_PLUGIN_VERSION_STRING "0.53b")
+set(MSF_PLUGIN_VERSION_STRING "0.53")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

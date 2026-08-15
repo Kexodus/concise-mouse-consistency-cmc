@@ -1,6 +1,8 @@
 # Concise Mouse Consistency (CMC)
 
-CMC is a DLL-only SKSE plugin for Skyrim SE/AE/GOG/VR.
+CMC is a DLL-only SKSE plugin for Skyrim Special Edition.
+One CommonLibSSE-NG build targets SE, AE, GOG, and VR. Release **0.53** is playtest-validated on Steam AE `1.6.1170`. SE `1.5.97`, AE `1.6.640`, GOG, and VR compile into the same DLL but are not yet in-game validated — see `docs/RUNTIME_VALIDATION.md`.
+
 It keeps mouse and gamepad look sensitivity consistent across camera states, restores first-person yaw that Skyrim halves or slows, and can remove third-person camera interpolation.
 
 ## What it does
@@ -29,14 +31,20 @@ CMC does not replace camera mods, apply automatic FOV-based input scaling, or no
 
 ## Build
 
-From a clean clone:
+Plugin builds need Visual Studio 2022 (MSVC v143) and CMake 3.24+. From a clean clone:
 
 ```powershell
 ./scripts/bootstrap-vcpkg.ps1
 cmake --preset plugin-release
 cmake --build --preset plugin-release
 ctest --preset plugin-release
+cmake --build --preset plugin-release --target package
 ```
+
+Outputs:
+
+- DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.53.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.

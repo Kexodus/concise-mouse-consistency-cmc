@@ -1,5 +1,7 @@
 # Concise Mouse Consistency (CMC)
 
+Release **0.53**.
+
 CMC is a DLL-only SKSE plugin that keeps mouse and gamepad look sensitivity consistent across Skyrim camera states.
 
 The plugin restores full-rate first-person horizontal look while looking in measured 0.5× states (sprint, bow aim, and orphan states such as casting). It normalizes first-person pitch to a frozen true-freelook gain and converts eligible slow-time yaw to wall-clock in first- and third-person. First-person mouse bow reconstructs horizontal look from raw pixels; third-person mouse bow keeps engine/camera-mod deltas. CMC does not apply FOV-based input scaling or normalize third-person pitch.
