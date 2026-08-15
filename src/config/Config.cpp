@@ -3,8 +3,20 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <ostream>
 #include <sstream>
+#include <system_error>
 #include <utility>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
 
 namespace
 {
@@ -58,6 +70,73 @@ namespace
     double FiniteOr(double value, double fallback) noexcept
     {
         return std::isfinite(value) ? value : fallback;
+    }
+
+    void WriteIniContents(std::ostream& output, const msf::ConfigValues& values)
+    {
+        output << "[General]\n";
+        output << "; Master enable for all plugin behavior. Set false to bypass transforms while keeping the plugin loaded.\n";
+        output << "bEnabled=" << (values.enabled ? "true" : "false") << "\n";
+        output << "; Global sensitivity scalar applied before per-device multipliers.\n";
+        output << "fGlobalSensitivity=" << values.globalSensitivity << "\n";
+        output << "; Mouse horizontal axis multiplier.\n";
+        output << "fMouseXAxisMultiplier=" << values.mouseXAxisMultiplier << "\n";
+        output << "; Mouse vertical axis multiplier.\n";
+        output << "fMouseYAxisMultiplier=" << values.mouseYAxisMultiplier << "\n";
+        output << "; Gamepad horizontal axis multiplier.\n";
+        output << "fGamepadXAxisMultiplier=" << values.gamepadXAxisMultiplier << "\n";
+        output << "; Gamepad vertical axis multiplier. Default 1.0 (same as mouse); lower if vertical look feels too fast.\n";
+        output << "fGamepadYAxisMultiplier=" << values.gamepadYAxisMultiplier << "\n";
+        output << "; Remove third-person camera smoothing/interpolation.\n";
+        output << "bEnableSmoothingRemovalHook=" << (values.enableSmoothingRemovalHook ? "true" : "false") << "\n";
+        output << "; Suppress large input spike on focus regain (alt-tab).\n";
+        output << "bSuppressFocusSpike=" << (values.suppressFocusSpike ? "true" : "false") << "\n";
+        output << "; Apply sensitivity transform to right-stick gamepad look.\n";
+        output << "bAffectGamepadLook=" << (values.affectGamepadLook ? "true" : "false") << "\n";
+        output << "\n";
+        output << "[Advanced]\n";
+        output << "; First-person look transforms, pitch normalize, half-rate yaw restore, and slow-time yaw compensation.\n";
+        output << "bEnableFirstPersonHook=" << (values.enableFirstPersonHook ? "true" : "false") << "\n";
+        output << "; Third-person look transforms and slow-time yaw compensation. Never writes freeRotation.y / TP pitch normalize.\n";
+        output << "bEnableThirdPersonHook=" << (values.enableThirdPersonHook ? "true" : "false") << "\n";
+        output << "; Disable transforms while game is paused or system menu is open.\n";
+        output << "bDisableInMenus=" << (values.disableInMenus ? "true" : "false") << "\n";
+        output << "; Set false if look controls are incorrectly reported as disabled by mods (e.g. camera mods that manage their own input).\n";
+        output << "bDisableWhenLookControlsDisabled=" << (values.disableWhenLookControlsDisabled ? "true" : "false") << "\n";
+        output << "; Treat the first mouse event after this idle gap as a focus-regain spike.\n";
+        output << "iFocusSpikeGapMs=" << values.focusSpikeGapMs << "\n";
+        output << "; First-person mouse bow only: X reconstructs from raw pixels * sampled freelook scale * this multiplier.\n";
+        output << "; 1.0 = freelook-equivalent reconstructed X. Does not scale by zoom/FOV. Third-person mouse bow is not reconstructed.\n";
+        output << "fBowAimMouseXMultiplier=" << values.bowAimMouseXMultiplier << "\n";
+        output << "; First-person mouse bow only: multiplies the live engine Y delta. 1.0 = keep engine Y. No FOV/eagleEyeY scale.\n";
+        output << "fBowAimMouseYMultiplier=" << values.bowAimMouseYMultiplier << "\n";
+        output << "; Gamepad bow aim multipliers (both perspectives). INI-only; not reconstructed from pixels.\n";
+        output << "fBowAimGamepadXMultiplier=" << values.bowAimGamepadXMultiplier << "\n";
+        output << "fBowAimGamepadYMultiplier=" << values.bowAimGamepadYMultiplier << "\n";
+        output << "; Enables low-frequency sampled hook counters for troubleshooting. Keep false for normal play.\n";
+        output << "bVerboseLogging=" << (values.verboseLogging ? "true" : "false") << "\n";
+        output << "\n";
+        output << "[Compatibility]\n";
+        output << "; When true, CMC keeps removing third-person smoothing even if SmoothCam / Improved Camera are detected.\n";
+        output << "; When false, CMC skips third-person smoothing intervention if either camera mod is present.\n";
+        output << "bKeepThirdPersonSmoothingRemovalWithCameraMods="
+               << (values.keepThirdPersonSmoothingRemovalWithCameraMods ? "true" : "false") << "\n";
+    }
+
+    bool ReplaceFileAtomically(
+        const std::filesystem::path& from,
+        const std::filesystem::path& to)
+    {
+#ifdef _WIN32
+        return ::MoveFileExW(
+                   from.c_str(),
+                   to.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+        std::error_code ec;
+        std::filesystem::rename(from, to, ec);
+        return !ec;
+#endif
     }
 }
 
@@ -148,7 +227,7 @@ namespace msf
             } else if (key == "bSuppressFocusSpike") {
                 loaded.suppressFocusSpike = ParseBool(value, loaded.suppressFocusSpike);
             } else if (key == "iFocusSpikeGapMs") {
-                loaded.focusSpikeGapMs = std::clamp(ParseInt(value, loaded.focusSpikeGapMs), 50, 5000);
+                loaded.focusSpikeGapMs = ClampFocusSpikeGapMs(ParseInt(value, loaded.focusSpikeGapMs));
             } else if (key == "bKeepThirdPersonSmoothingRemovalWithCameraMods") {
                 sawReplacementCompatibilityKey = true;
                 loaded.keepThirdPersonSmoothingRemovalWithCameraMods =
@@ -217,6 +296,7 @@ namespace msf
             std::scoped_lock guard(_lock);
             _values = loaded;
             _configPath = iniPath;
+            _dirty = false;
             // On mtime failure keep prior tracking so ReloadIfChanged does not
             // treat every 250ms poll as dirty once mtime becomes readable again.
             if (!ec) {
@@ -234,38 +314,28 @@ namespace msf
     {
         std::scoped_lock guard(_lock);
 
-        std::ofstream output(iniPath, std::ios::trunc);
-        if (!output.is_open()) {
-            return false;
+        auto tempPath = iniPath;
+        tempPath += ".tmp";
+
+        {
+            std::ofstream output(tempPath, std::ios::trunc);
+            if (!output.is_open()) {
+                return false;
+            }
+
+            WriteIniContents(output, _values);
+            output.flush();
+            if (!output) {
+                output.close();
+                std::error_code removeEc;
+                std::filesystem::remove(tempPath, removeEc);
+                return false;
+            }
         }
 
-        output << "[General]\n";
-        output << "bEnabled=" << (_values.enabled ? "true" : "false") << "\n";
-        output << "fGlobalSensitivity=" << _values.globalSensitivity << "\n";
-        output << "fMouseXAxisMultiplier=" << _values.mouseXAxisMultiplier << "\n";
-        output << "fMouseYAxisMultiplier=" << _values.mouseYAxisMultiplier << "\n";
-        output << "fGamepadXAxisMultiplier=" << _values.gamepadXAxisMultiplier << "\n";
-        output << "fGamepadYAxisMultiplier=" << _values.gamepadYAxisMultiplier << "\n";
-        output << "bEnableSmoothingRemovalHook=" << (_values.enableSmoothingRemovalHook ? "true" : "false") << "\n";
-        output << "bSuppressFocusSpike=" << (_values.suppressFocusSpike ? "true" : "false") << "\n";
-        output << "bAffectGamepadLook=" << (_values.affectGamepadLook ? "true" : "false") << "\n";
-        output << "[Advanced]\n";
-        output << "bEnableFirstPersonHook=" << (_values.enableFirstPersonHook ? "true" : "false") << "\n";
-        output << "bEnableThirdPersonHook=" << (_values.enableThirdPersonHook ? "true" : "false") << "\n";
-        output << "bDisableInMenus=" << (_values.disableInMenus ? "true" : "false") << "\n";
-        output << "bDisableWhenLookControlsDisabled=" << (_values.disableWhenLookControlsDisabled ? "true" : "false") << "\n";
-        output << "iFocusSpikeGapMs=" << _values.focusSpikeGapMs << "\n";
-        output << "fBowAimMouseXMultiplier=" << _values.bowAimMouseXMultiplier << "\n";
-        output << "fBowAimMouseYMultiplier=" << _values.bowAimMouseYMultiplier << "\n";
-        output << "fBowAimGamepadXMultiplier=" << _values.bowAimGamepadXMultiplier << "\n";
-        output << "fBowAimGamepadYMultiplier=" << _values.bowAimGamepadYMultiplier << "\n";
-        output << "bVerboseLogging=" << (_values.verboseLogging ? "true" : "false") << "\n";
-        output << "[Compatibility]\n";
-        output << "bKeepThirdPersonSmoothingRemovalWithCameraMods="
-               << (_values.keepThirdPersonSmoothingRemovalWithCameraMods ? "true" : "false") << "\n";
-
-        output.flush();
-        if (!output) {
+        if (!ReplaceFileAtomically(tempPath, iniPath)) {
+            std::error_code removeEc;
+            std::filesystem::remove(tempPath, removeEc);
             return false;
         }
 
@@ -274,6 +344,7 @@ namespace msf
         if (!ec) {
             _lastWriteTime = writeTime;
         }
+        _dirty = false;
         return true;
     }
 
@@ -289,6 +360,9 @@ namespace msf
                 return false;
             }
             _lastReloadPoll = now;
+            if (_dirty) {
+                return false;
+            }
             iniPath = _configPath;
             knownWriteTime = _lastWriteTime;
         }
@@ -326,7 +400,7 @@ namespace msf
         }
 
         auto normalized = updatedValues;
-        normalized.focusSpikeGapMs = std::clamp(normalized.focusSpikeGapMs, 50, 5000);
+        normalized.focusSpikeGapMs = ClampFocusSpikeGapMs(normalized.focusSpikeGapMs);
         normalized.globalSensitivity = std::clamp(
             FiniteOr(normalized.globalSensitivity, previous.globalSensitivity), 0.01, 20.0);
         normalized.mouseXAxisMultiplier = std::clamp(
@@ -350,10 +424,22 @@ namespace msf
         {
             std::scoped_lock guard(_lock);
             _values = normalized;
+            _dirty = true;
             callback = _changeCallback;
         }
         if (callback) {
             callback(normalized);
         }
+    }
+
+    bool ConfigManager::HasUnsavedChanges() const
+    {
+        std::scoped_lock guard(_lock);
+        return _dirty;
+    }
+
+    int ClampFocusSpikeGapMs(int value) noexcept
+    {
+        return std::clamp(value, 50, 5000);
     }
 }

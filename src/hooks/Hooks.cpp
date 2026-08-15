@@ -733,8 +733,8 @@ namespace msf
             // The pitch gain is an engine constant relative to post-transform Y.
             // Seed once from three consistent true-freelook samples, then freeze it;
             // bow-exit interpolation can otherwise contaminate an adaptive EMA.
-            if (trueFreelookBaseline && g_freelookPitchPerLook == 0.0F) {
-                UpdateFreelookScaleSample(
+            if (trueFreelookBaseline) {
+                SeedFrozenFreelookPitchPerLook(
                     input.outY,
                     engineTargetPitchDelta,
                     g_freelookPitchPerLook,
@@ -1214,18 +1214,26 @@ namespace msf
 
             if (reloadedConfig.suppressFocusSpike) {
                 const auto now = std::chrono::steady_clock::now();
-                if (g_lastMouseEventTime.time_since_epoch().count() != 0) {
-                    const auto gapMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastMouseEventTime).count();
-                    if (gapMs > reloadedConfig.focusSpikeGapMs) {
-                        event->mouseInputX = 0;
-                        event->mouseInputY = 0;
-                        g_lastCameraState = "FocusSpikeSuppressed";
-                        g_lastMouseEventTime = now;
-                        ClearMouseTelemetryWindow();
-                        LogLookHookCountersIfNeeded(reloadedConfig);
-                        g_originalProcessMouseMove(handler, event, data);
-                        return;
-                    }
+                const bool havePreviousEvent =
+                    g_lastMouseEventTime.time_since_epoch().count() != 0;
+                const auto gapMs = havePreviousEvent
+                    ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                          now - g_lastMouseEventTime)
+                          .count()
+                    : std::int64_t{ 0 };
+                if (ShouldSuppressFocusSpikeEvent(
+                        true,
+                        havePreviousEvent,
+                        gapMs,
+                        reloadedConfig.focusSpikeGapMs)) {
+                    event->mouseInputX = 0;
+                    event->mouseInputY = 0;
+                    g_lastCameraState = "FocusSpikeSuppressed";
+                    g_lastMouseEventTime = now;
+                    ClearMouseTelemetryWindow();
+                    LogLookHookCountersIfNeeded(reloadedConfig);
+                    g_originalProcessMouseMove(handler, event, data);
+                    return;
                 }
                 g_lastMouseEventTime = now;
             }
@@ -2190,6 +2198,36 @@ namespace msf
         pendingScale = 0.0F;
         pendingCount = 0;
         return true;
+    }
+
+    bool SeedFrozenFreelookPitchPerLook(
+        float postTransformLookY,
+        float engineTargetPitchDelta,
+        float& currentGain,
+        float& pendingGain,
+        std::uint32_t& pendingCount) noexcept
+    {
+        if (currentGain != 0.0F) {
+            return false;
+        }
+        return UpdateFreelookScaleSample(
+            postTransformLookY,
+            engineTargetPitchDelta,
+            currentGain,
+            pendingGain,
+            pendingCount);
+    }
+
+    bool ShouldSuppressFocusSpikeEvent(
+        bool suppressFocusSpike,
+        bool havePreviousEvent,
+        std::int64_t gapMs,
+        int focusSpikeGapMs) noexcept
+    {
+        if (!suppressFocusSpike || !havePreviousEvent) {
+            return false;
+        }
+        return gapMs > static_cast<std::int64_t>(ClampFocusSpikeGapMs(focusSpikeGapMs));
     }
 
     bool ShouldUpdateNormalAimFov(

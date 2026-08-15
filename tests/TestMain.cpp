@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -104,6 +105,11 @@ namespace
         config.enabled = false;
         CHECK(!coordinator.ShouldApplyInputTransform(config, true, false, false));
         CHECK(!coordinator.ShouldRemoveThirdPersonSmoothing(config));
+        config.enabled = true;
+        config.enableSmoothingRemovalHook = false;
+        CHECK(!coordinator.ShouldRemoveThirdPersonSmoothing(config));
+        CHECK(coordinator.ShouldApplyInputTransform(config, true, false, false));
+        CHECK(coordinator.ShouldApplyInputTransform(config, false, true, false));
     }
 
     void TestGamepadTransformDefaultsToAxisParity()
@@ -153,6 +159,36 @@ namespace
             0.5F);
         CHECK(Near(fallbackX, 1.0F));
         CHECK(Near(currentY, -3.0F));
+
+        const auto [zeroScaleX, zeroScaleY] = msf::ApplyBowAimMouseDeltas(
+            3.0F,
+            1.5F,
+            -4.0F,
+            0.0F,
+            1.0F,
+            1.0F);
+        CHECK(Near(zeroScaleX, 1.5F));
+        CHECK(Near(zeroScaleY, -4.0F));
+
+        const auto [negativeRawX, negativeRawY] = msf::ApplyBowAimMouseDeltas(
+            -3.0F,
+            9.0F,
+            -4.0F,
+            0.5F,
+            1.0F,
+            1.0F);
+        CHECK(Near(negativeRawX, -1.5F));
+        CHECK(Near(negativeRawY, -4.0F));
+
+        const auto [identityX, identityY] = msf::ApplyBowAimMouseDeltas(
+            3.0F,
+            9.0F,
+            -4.0F,
+            0.5F,
+            1.0F,
+            1.0F);
+        CHECK(Near(identityX, 1.5F));
+        CHECK(Near(identityY, -4.0F));
     }
 
     void TestBowAimVerticalMultiplierPreservesConfiguredAxisParity()
@@ -1257,6 +1293,431 @@ namespace
         CHECK(maximumActiveCallbacks == 1);
         manager.SetChangeCallback({});
     }
+
+    struct YawPipelineState
+    {
+        std::uint32_t halfRateStreak{ 0 };
+        float previousTimeMult{ 1.0F };
+        bool havePreviousTimeMult{ false };
+        std::uint32_t stableDilatedStreak{ 0 };
+    };
+
+    msf::PlayerYawCorrectionResult RunHookFaithfulYawPipeline(
+        const msf::LookCorrectionContext& ctx,
+        float lookX,
+        float delta,
+        float engineYaw,
+        float realTimeDelta,
+        YawPipelineState& state)
+    {
+        const auto policy = msf::EvaluateLookCorrectionPolicy(ctx, true, true, true);
+        const float observedScale = msf::ComputeObservedYawScale(lookX, delta, engineYaw);
+        const bool inBand = msf::IsObservedHalfRateScale(observedScale);
+        state.halfRateStreak = msf::UpdateHalfRateBandStreak(
+            policy.restoreHalfRateYaw,
+            inBand,
+            state.halfRateStreak);
+        const bool applyHalfRate = msf::ShouldApplyHalfRateRestore(
+            policy.restoreHalfRateYaw,
+            inBand,
+            state.halfRateStreak,
+            ctx.sprinting || ctx.bowAiming);
+        if (ctx.timeDilated &&
+            msf::IsGlobalTimeMultStable(
+                ctx.timeMult,
+                state.previousTimeMult,
+                state.havePreviousTimeMult)) {
+            if (state.stableDilatedStreak < 255U) {
+                ++state.stableDilatedStreak;
+            }
+        } else {
+            state.stableDilatedStreak = 0;
+        }
+
+        msf::TimeCompSkipReason reason = msf::TimeCompSkipReason::None;
+        const auto mode = msf::ResolveTimeCompMode(
+            policy.compensateTimeYaw,
+            delta,
+            realTimeDelta,
+            ctx.timeMult,
+            state.previousTimeMult,
+            state.havePreviousTimeMult,
+            &reason,
+            0.12F,
+            0.08F,
+            state.stableDilatedStreak);
+        const auto result = msf::ApplyPlayerYawCorrection(
+            lookX,
+            delta,
+            engineYaw,
+            ctx.timeMult,
+            applyHalfRate,
+            mode,
+            realTimeDelta);
+
+        state.previousTimeMult = ctx.timeMult;
+        state.havePreviousTimeMult = true;
+        return result;
+    }
+
+    void TestHookFaithfulYawPipeline()
+    {
+        constexpr float pi = 3.14159265358979323846F;
+        constexpr float lookX = 0.6F;
+        constexpr float settledDelta = 0.004167F;
+        constexpr float settledRtd = 0.016668F;
+        constexpr float settledTimeMult = 0.25F;
+        const float halfEngine = lookX * settledDelta * pi * 0.5F;
+        const float wallClock = lookX * settledRtd * pi;
+
+        {
+            auto ctx = MakeLookContext(true, false, false, true, true, settledTimeMult);
+            YawPipelineState state{};
+            state.previousTimeMult = settledTimeMult;
+            state.havePreviousTimeMult = true;
+            state.stableDilatedStreak = 3;
+            const auto result = RunHookFaithfulYawPipeline(
+                ctx,
+                lookX,
+                settledDelta,
+                halfEngine,
+                settledRtd,
+                state);
+            CHECK(result.halfRateRestored);
+            CHECK(result.timeCompensated);
+            CHECK(result.timeCompMode == msf::TimeCompMode::ScaleByCurrent);
+            CHECK(Near(result.yawDelta, lookX * (settledDelta / settledTimeMult) * pi));
+            CHECK(Near(result.yawDelta, wallClock));
+        }
+
+        constexpr float rampDelta = 0.004167F;
+        constexpr float rampRtd = 0.016667F;
+        constexpr float rampTimeMult = 0.885843F;
+        const float rampFullEngine = lookX * rampDelta * pi;
+        const float rampWall = lookX * rampRtd * pi;
+
+        {
+            auto ctx = MakeLookContext(true, false, false, true, true, rampTimeMult);
+            YawPipelineState state{};
+            state.previousTimeMult = rampTimeMult;
+            state.havePreviousTimeMult = true;
+            const auto result = RunHookFaithfulYawPipeline(
+                ctx,
+                lookX,
+                rampDelta,
+                rampFullEngine,
+                rampRtd,
+                state);
+            CHECK(result.timeCompensated);
+            CHECK(result.timeCompMode == msf::TimeCompMode::RewriteWallClock);
+            CHECK(Near(result.yawDelta, rampWall));
+            CHECK(std::abs(result.yawDelta - (rampFullEngine / rampTimeMult)) > 0.0001F);
+        }
+
+        {
+            auto ctx = MakeLookContext(true, false, false, true, true, rampTimeMult);
+            YawPipelineState state{};
+            state.previousTimeMult = rampTimeMult;
+            state.havePreviousTimeMult = true;
+            const float rampHalfEngine = lookX * rampDelta * pi * 0.5F;
+            const auto result = RunHookFaithfulYawPipeline(
+                ctx,
+                lookX,
+                rampDelta,
+                rampHalfEngine,
+                rampRtd,
+                state);
+            CHECK(result.halfRateRestored);
+            CHECK(result.timeCompMode == msf::TimeCompMode::RewriteWallClock);
+            CHECK(Near(result.yawDelta, rampWall));
+            CHECK(std::abs(result.yawDelta - rampWall * 0.5F) > 0.0001F);
+        }
+
+        {
+            auto ctx = MakeLookContext(true, false, false, false, true, 1.0F);
+            ctx.casting = true;
+            constexpr float delta = 1.0F / 60.0F;
+            const float expected = lookX * delta * pi;
+            const float orphanHalf = expected * 0.5F;
+            YawPipelineState state{};
+            const auto first = RunHookFaithfulYawPipeline(
+                ctx,
+                lookX,
+                delta,
+                orphanHalf,
+                delta,
+                state);
+            CHECK(!first.halfRateRestored);
+            CHECK(Near(first.yawDelta, orphanHalf));
+            const auto second = RunHookFaithfulYawPipeline(
+                ctx,
+                lookX,
+                delta,
+                orphanHalf,
+                delta,
+                state);
+            CHECK(second.halfRateRestored);
+            CHECK(Near(second.yawDelta, expected));
+        }
+    }
+
+    void TestFrozenFreelookPitchBaseline()
+    {
+        float gain = 0.0F;
+        float pending = 0.0F;
+        std::uint32_t pendingCount = 0;
+
+        CHECK(!msf::SeedFrozenFreelookPitchPerLook(-2.0F, -0.16F, gain, pending, pendingCount));
+        CHECK(Near(gain, 0.0F));
+        CHECK(!msf::SeedFrozenFreelookPitchPerLook(-2.0F, -0.16F, gain, pending, pendingCount));
+        CHECK(msf::SeedFrozenFreelookPitchPerLook(-2.0F, -0.16F, gain, pending, pendingCount));
+        CHECK(Near(gain, 0.08F));
+
+        const float seeded = gain;
+        CHECK(!msf::SeedFrozenFreelookPitchPerLook(-2.0F, -0.20F, gain, pending, pendingCount));
+        CHECK(Near(gain, seeded));
+        CHECK(!msf::SeedFrozenFreelookPitchPerLook(-4.0F, -0.40F, gain, pending, pendingCount));
+        CHECK(Near(gain, seeded));
+
+        CHECK(Near(msf::NormalizePitchTargetDelta(-2.0F, -0.20F, 0.0F, true), -0.20F));
+        CHECK(Near(msf::NormalizePitchTargetDelta(0.0F, 0.5F, seeded, true), 0.0F));
+        CHECK(Near(msf::NormalizePitchTargetDelta(-2.0F, -0.20F, seeded, true), -0.16F));
+    }
+
+    void TestLookApisIgnoreFov()
+    {
+        msf::HookCoordinator coordinator;
+        msf::ConfigValues config;
+        config.globalSensitivity = 1.25;
+        config.mouseXAxisMultiplier = 0.8;
+        config.mouseYAxisMultiplier = 1.1;
+
+        const auto first = coordinator.ApplyTransform(2.0F, -3.0F, config, false);
+        const float unusedVFov = 29.5F;
+        const float unusedHFov = 50.5F;
+        const auto second = coordinator.ApplyTransform(2.0F, -3.0F, config, false);
+        CHECK(Near(first.first, second.first));
+        CHECK(Near(first.second, second.second));
+        CHECK(Near(first.first, 2.0F * 1.25F * 0.8F));
+        CHECK(Near(first.second, -3.0F * 1.25F * 1.1F));
+        (void)unusedVFov;
+        (void)unusedHFov;
+
+        const auto bowA = msf::ApplyBowAimMouseDeltas(4.0F, 1.0F, -2.0F, 0.5F, 1.0F, 1.0F);
+        const auto bowB = msf::ApplyBowAimMouseDeltas(4.0F, 1.0F, -2.0F, 0.5F, 1.0F, 1.0F);
+        CHECK(Near(bowA.first, bowB.first));
+        CHECK(Near(bowA.second, bowB.second));
+        CHECK(Near(bowA.first, 2.0F));
+        CHECK(Near(bowA.second, -2.0F));
+
+        constexpr float lookX = 0.5F;
+        constexpr float delta = 0.004167F;
+        constexpr float rtd = 0.016667F;
+        constexpr float pi = 3.14159265358979323846F;
+        const auto yawA = msf::ApplyPlayerYawCorrection(
+            lookX,
+            delta,
+            lookX * delta * pi,
+            0.885843F,
+            false,
+            msf::TimeCompMode::RewriteWallClock,
+            rtd);
+        const auto yawB = msf::ApplyPlayerYawCorrection(
+            lookX,
+            delta,
+            lookX * delta * pi,
+            0.885843F,
+            false,
+            msf::TimeCompMode::RewriteWallClock,
+            rtd);
+        CHECK(Near(yawA.yawDelta, yawB.yawDelta));
+        CHECK(Near(yawA.yawDelta, lookX * rtd * pi));
+
+        CHECK(Near(msf::CalculateBowAimVerticalMultiplier(true, 1.0F), 1.0F));
+        CHECK(Near(msf::CalculateBowAimVerticalMultiplier(true, 0.75F), 0.75F));
+        constexpr float eagleEyeY = 1.0F;
+        CHECK(Near(eagleEyeY, 1.0F));
+    }
+
+    void TestFocusSpikeSuppressionHelper()
+    {
+        CHECK(msf::ClampFocusSpikeGapMs(1) == 50);
+        CHECK(msf::ClampFocusSpikeGapMs(9000) == 5000);
+        CHECK(msf::ClampFocusSpikeGapMs(350) == 350);
+
+        CHECK(!msf::ShouldSuppressFocusSpikeEvent(false, true, 1000, 350));
+        CHECK(!msf::ShouldSuppressFocusSpikeEvent(true, false, 1000, 350));
+        CHECK(!msf::ShouldSuppressFocusSpikeEvent(true, true, 350, 350));
+        CHECK(msf::ShouldSuppressFocusSpikeEvent(true, true, 351, 350));
+        CHECK(msf::ShouldSuppressFocusSpikeEvent(true, true, 1000, 350));
+
+        CHECK(msf::ShouldSuppressFocusSpikeEvent(true, true, 51, 1));
+        CHECK(!msf::ShouldSuppressFocusSpikeEvent(true, true, 49, 1));
+        CHECK(!msf::ShouldSuppressFocusSpikeEvent(true, true, 5000, 9000));
+        CHECK(msf::ShouldSuppressFocusSpikeEvent(true, true, 5001, 9000));
+    }
+
+    void TestConfigCompletenessAndSmoothingGate()
+    {
+        TemporaryDirectory directory;
+        const auto iniPath = directory.Path() / "MouseSensitivityFix.ini";
+        WriteText(
+            iniPath,
+            "[General]\n"
+            "bEnabled=true\n"
+            "bVerboseLogging=true\n"
+            "bSuppressFocusSpike=false\n"
+            "bEnableSmoothingRemovalHook=false\n"
+            "[Advanced]\n"
+            "bEnableFirstPersonHook=true\n"
+            "bEnableThirdPersonHook=true\n"
+            "fBowAimMouseXMultiplier=2.5\n"
+            "fBowAimMouseYMultiplier=0.5\n"
+            "fBowAimGamepadXMultiplier=1.25\n"
+            "fBowAimGamepadYMultiplier=0.75\n");
+
+        auto& manager = msf::ConfigManager::Get();
+        manager.SetChangeCallback({});
+        CHECK(manager.LoadFromIni(iniPath));
+        auto values = manager.GetSnapshot();
+        CHECK(values.verboseLogging);
+        CHECK(!values.suppressFocusSpike);
+        CHECK(!values.enableSmoothingRemovalHook);
+        CHECK(values.enabled);
+        CHECK(values.enableFirstPersonHook);
+        CHECK(values.enableThirdPersonHook);
+        CHECK(values.bowAimMouseXMultiplier == 2.5);
+        CHECK(values.bowAimMouseYMultiplier == 0.5);
+        CHECK(values.bowAimGamepadXMultiplier == 1.25);
+        CHECK(values.bowAimGamepadYMultiplier == 0.75);
+
+        msf::HookCoordinator coordinator;
+        CHECK(!coordinator.ShouldRemoveThirdPersonSmoothing(values));
+        CHECK(coordinator.ShouldApplyInputTransform(values, true, false, false));
+        CHECK(coordinator.ShouldApplyInputTransform(values, false, true, false));
+
+        values.bowAimMouseXMultiplier = 99.0;
+        values.bowAimMouseYMultiplier = 0.001;
+        manager.ApplyUiUpdate(values);
+        values = manager.GetSnapshot();
+        CHECK(values.bowAimMouseXMultiplier == 20.0);
+        CHECK(values.bowAimMouseYMultiplier == 0.01);
+        CHECK(manager.HasUnsavedChanges());
+
+        CHECK(manager.SaveToIni(iniPath));
+        CHECK(!manager.HasUnsavedChanges());
+        const auto savedText = ReadText(iniPath);
+        CHECK(savedText.find("fBowAimMouseXMultiplier=20") != std::string::npos);
+        CHECK(savedText.find("bVerboseLogging=true") != std::string::npos);
+        CHECK(savedText.find("bEnableSmoothingRemovalHook=false") != std::string::npos);
+        CHECK(savedText.find("Does not scale by zoom/FOV") != std::string::npos);
+        CHECK(savedText.find("pitch normalize") != std::string::npos);
+        CHECK(savedText.find("bKeepThirdPersonSmoothingRemovalWithCameraMods") != std::string::npos);
+    }
+
+    void TestReloadThrottleAndDistIniDefaults()
+    {
+        TemporaryDirectory directory;
+        const auto iniPath = directory.Path() / "MouseSensitivityFix.ini";
+        WriteText(iniPath, "[General]\nbEnabled=true\n");
+
+        auto& manager = msf::ConfigManager::Get();
+        manager.SetChangeCallback({});
+        manager.SetConfigPath(iniPath);
+        CHECK(manager.LoadFromIni(iniPath));
+
+        WriteText(iniPath, "[General]\nbEnabled=false\n");
+        std::filesystem::last_write_time(
+            iniPath,
+            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        CHECK(manager.ReloadIfChanged());
+        CHECK(!manager.GetSnapshot().enabled);
+
+        WriteText(iniPath, "[General]\nbEnabled=true\niFocusSpikeGapMs=400\n");
+        std::filesystem::last_write_time(
+            iniPath,
+            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        CHECK(!manager.ReloadIfChanged());
+        CHECK(!manager.GetSnapshot().enabled);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(260));
+        CHECK(manager.ReloadIfChanged());
+        CHECK(manager.GetSnapshot().enabled);
+        CHECK(manager.GetSnapshot().focusSpikeGapMs == 400);
+
+        std::filesystem::path distIni;
+        {
+            const std::filesystem::path relative =
+                std::filesystem::path("dist") / "Data" / "SKSE" / "Plugins" / "MouseSensitivityFix.ini";
+            auto cursor = std::filesystem::current_path();
+            for (int depth = 0; depth < 8; ++depth) {
+                if (std::filesystem::exists(cursor / relative)) {
+                    distIni = cursor / relative;
+                    break;
+                }
+                if (!cursor.has_parent_path() || cursor.parent_path() == cursor) {
+                    break;
+                }
+                cursor = cursor.parent_path();
+            }
+            if (distIni.empty()) {
+                const auto fromFile = std::filesystem::absolute(
+                    std::filesystem::path(__FILE__).parent_path().parent_path() / relative);
+                if (std::filesystem::exists(fromFile)) {
+                    distIni = fromFile;
+                }
+            }
+        }
+        CHECK(!distIni.empty());
+        CHECK(manager.LoadFromIni(distIni));
+        const auto distValues = manager.GetSnapshot();
+        CHECK(distValues.enabled);
+        CHECK(!distValues.verboseLogging);
+        CHECK(distValues.suppressFocusSpike);
+        CHECK(distValues.enableSmoothingRemovalHook);
+        CHECK(distValues.bowAimMouseXMultiplier == 1.0);
+        CHECK(distValues.bowAimMouseYMultiplier == 1.0);
+        CHECK(distValues.bowAimGamepadXMultiplier == 1.0);
+        CHECK(distValues.bowAimGamepadYMultiplier == 1.0);
+        CHECK(distValues.keepThirdPersonSmoothingRemovalWithCameraMods);
+        CHECK(distValues.focusSpikeGapMs == 350);
+        const auto distText = ReadText(distIni);
+        CHECK(distText.find("bVerboseLogging=false") != std::string::npos);
+    }
+
+    void TestUnsavedUiIsNotClobberedByReload()
+    {
+        TemporaryDirectory directory;
+        const auto iniPath = directory.Path() / "MouseSensitivityFix.ini";
+        WriteText(iniPath, "[General]\nfGlobalSensitivity=1.0\n");
+
+        auto& manager = msf::ConfigManager::Get();
+        manager.SetChangeCallback({});
+        manager.SetConfigPath(iniPath);
+        CHECK(manager.LoadFromIni(iniPath));
+        CHECK(!manager.HasUnsavedChanges());
+
+        auto values = manager.GetSnapshot();
+        values.globalSensitivity = 2.0;
+        values.bowAimMouseXMultiplier = 1.5;
+        manager.ApplyUiUpdate(values);
+        CHECK(manager.HasUnsavedChanges());
+        CHECK(manager.GetSnapshot().globalSensitivity == 2.0);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(260));
+        WriteText(iniPath, "[General]\nfGlobalSensitivity=3.0\n");
+        std::filesystem::last_write_time(
+            iniPath,
+            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        CHECK(!manager.ReloadIfChanged());
+        CHECK(manager.GetSnapshot().globalSensitivity == 2.0);
+        CHECK(manager.GetSnapshot().bowAimMouseXMultiplier == 1.5);
+        CHECK(manager.HasUnsavedChanges());
+
+        CHECK(manager.SaveToIni(iniPath));
+        CHECK(!manager.HasUnsavedChanges());
+        CHECK(ReadText(iniPath).find("fGlobalSensitivity=2") != std::string::npos);
+    }
 }
 
 int main()
@@ -1292,6 +1753,13 @@ int main()
         { "legacy config keys remain safe", TestLegacyConfigKeysRemainSafe },
         { "replacement compatibility key overrides legacy migration", TestReplacementCompatibilityKeyOverridesLegacyMigration },
         { "config callbacks are serialized", TestConfigCallbacksAreSerialized },
+        { "hook-faithful yaw pipeline", TestHookFaithfulYawPipeline },
+        { "frozen freelook pitch baseline", TestFrozenFreelookPitchBaseline },
+        { "look APIs ignore FOV", TestLookApisIgnoreFov },
+        { "focus spike suppression helper", TestFocusSpikeSuppressionHelper },
+        { "config completeness and smoothing gate", TestConfigCompletenessAndSmoothingGate },
+        { "reload throttle and dist INI defaults", TestReloadThrottleAndDistIniDefaults },
+        { "unsaved UI is not clobbered by reload", TestUnsavedUiIsNotClobberedByReload },
     };
 
     int failures = 0;

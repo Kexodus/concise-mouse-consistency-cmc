@@ -294,6 +294,21 @@ namespace msf
         float& currentScale,
         float& pendingScale,
         std::uint32_t& pendingCount) noexcept;
+    // Seed g_freelookPitchPerLook from true-freelook samples, then freeze.
+    // Further samples must not move a nonzero gain (bow-exit interpolation poison).
+    bool SeedFrozenFreelookPitchPerLook(
+        float postTransformLookY,
+        float engineTargetPitchDelta,
+        float& currentGain,
+        float& pendingGain,
+        std::uint32_t& pendingCount) noexcept;
+    // Alt-tab focus spike: first event after gapMs > threshold is zeroed.
+    // suppressFocusSpike=false never zeros. Missing previous event never zeros.
+    bool ShouldSuppressFocusSpikeEvent(
+        bool suppressFocusSpike,
+        bool havePreviousEvent,
+        std::int64_t gapMs,
+        int focusSpikeGapMs) noexcept;
     bool ShouldUpdateNormalAimFov(
         bool rangedWeaponActive,
         bool bowAiming,

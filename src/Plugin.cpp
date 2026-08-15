@@ -112,10 +112,7 @@ namespace msf
         }
 
         if (!g_menuFrameworkBridge.Initialize()) {
-            configManager.SetChangeCallback({});
-            g_hookCoordinator.Remove();
-            LogError("Failed to initialize menu framework bridge.");
-            return false;
+            LogWarn("Menu framework bridge unavailable. INI-based config remains available.");
         }
 
         LogInfo("Initialization complete.");

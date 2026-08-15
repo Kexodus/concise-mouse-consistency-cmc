@@ -81,9 +81,8 @@ namespace msf
             auto values = ConfigManager::Get().GetSnapshot();
             bool changed = false;
 
-            // Front-page controls only. Demoted General/Advanced knobs remain
-            // INI-only (still loaded/saved by ConfigManager). Verbose logging
-            // stays omitted because it is diagnostic-only.
+            // Front-page controls. Verbose logging and gamepad bow stay INI-only.
+            // First-person mouse bow X/Y are on this page (custom bow sensitivity).
             UiSeparatorText("General");
             changed |= g_api.Checkbox("Enabled", &values.enabled);
             float globalSens = static_cast<float>(values.globalSensitivity);
@@ -115,6 +114,23 @@ namespace msf
             changed |= g_api.Checkbox("Suppress focus spike (alt-tab)", &values.suppressFocusSpike);
             changed |= g_api.Checkbox("Apply to gamepad look", &values.affectGamepadLook);
 
+            UiSeparatorText("Bow aim (first-person mouse)");
+            UiText(
+                "X reconstructs from raw pixels * sampled freelook scale * this multiplier. "
+                "1.0 = freelook-equivalent reconstructed X, not zoom/FOV compensation. "
+                "Y multiplies the live engine delta. Third-person mouse bow multipliers do not apply.");
+            float bowMouseX = static_cast<float>(values.bowAimMouseXMultiplier);
+            float bowMouseY = static_cast<float>(values.bowAimMouseYMultiplier);
+            if (g_api.SliderFloat("Mouse bow X", &bowMouseX, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimMouseXMultiplier = static_cast<double>(bowMouseX);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Mouse bow Y", &bowMouseY, 0.01F, 20.0F, "%.2f", 0)) {
+                values.bowAimMouseYMultiplier = static_cast<double>(bowMouseY);
+                changed = true;
+            }
+            UiText("Gamepad bow X/Y stay in the INI.");
+
             // ── Compatibility ─────────────────────────────────────────────────
             UiSeparatorText("Compatibility");
             changed |= g_api.Checkbox(
@@ -124,6 +140,7 @@ namespace msf
             // ─────────────────────────────────────────────────────────────────
             if (changed) {
                 ConfigManager::Get().ApplyUiUpdate(values);
+                g_lastSaveAttempted = false;
             }
 
             UiSeparator();
@@ -142,14 +159,14 @@ namespace msf
                 LogInfo(loaded ? "UI: reloaded configuration from INI." : "UI: failed to reload configuration from INI.");
             }
 
-            if (!g_lastSaveAttempted) {
+            const bool unsaved = ConfigManager::Get().HasUnsavedChanges();
+            if (unsaved || !g_lastSaveAttempted) {
                 UiText("Changes apply immediately. Use Save to persist.");
             } else if (g_lastSaveSucceeded) {
                 UiText("Last operation succeeded.");
             } else {
                 UiText("Last operation failed. Check log for details.");
             }
-            UiText("Advanced options (bow multipliers, focus gap, per-camera gates, etc.) are INI-only.");
         }
 
         bool ResolveFrameworkApi()

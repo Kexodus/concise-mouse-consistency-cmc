@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.53b] - 2026-08-14
+
+### Changed
+
+- Restored first-person mouse bow X/Y controls on the SKSE Menu Framework settings page. Labels match FP-only reconstruct (1.0 = freelook-equivalent X; Y multiplies live engine delta; no zoom/FOV scaling). Gamepad bow multipliers stay INI-only.
+- Save to INI writes a temp file then replaces the destination, and regenerates comments so the first UI save cannot leave an empty or comment-stripped INI.
+- Unsaved live UI values are not overwritten by throttled disk reload; further slider edits after Save return to the “Changes apply immediately…” prompt.
+
+### Fixed
+
+- Camera-mod DLL scan no longer skips later plugins after one unreadable directory entry.
+- Menu Framework initialize failure no longer unloads the plugin (INI-only fallback).
+
+### Tests / Docs
+
+- Added hook-faithful yaw, pitch-freeze, FOV-independence, focus-spike, config completeness, reload-throttle, and unsaved-UI regression tests.
+- Playtest docs now expect `YawTimeCompWallRewrite` / `timeComp=1` `mode=wall` on Eagle Eye disagree, not `YawTimeCompSkip` / `timeComp=0`.
+
 ## [0.1.4] - 2026-08-12
 
 ### Fixed

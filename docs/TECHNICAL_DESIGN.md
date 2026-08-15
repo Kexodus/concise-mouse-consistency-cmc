@@ -30,9 +30,9 @@ CMC has four parts:
 
 Default mouse and gamepad axis multipliers are `1.0`. Users can lower `gamepadYAxisMultiplier` if vertical look feels too fast.
 
-During bow aim, CMC reconstructs X from raw pixels and a camera-specific freelook sample before applying the configured bow and mouse multipliers. First- and third-person samples are isolated, reset when the camera root changes, update only during true freelook, and require three consistent candidates before an unseeded or changed scale is accepted. Y preserves Skyrim's current engine delta and applies the configured bow and mouse Y multipliers exactly once.
+During first-person bow aim, CMC reconstructs X from raw pixels and a camera-specific freelook sample before applying the configured bow and mouse multipliers. First- and third-person samples are isolated, reset when the camera root changes, update only during true freelook, and require three consistent candidates before an unseeded or changed scale is accepted. Y preserves Skyrim's current engine delta and applies the configured bow and mouse Y multipliers exactly once. Third-person mouse bow keeps engine/camera-mod deltas (no reconstruct).
 
-Eagle Eye keeps the same freelook-equivalent input target on both axes. The rendered `NiCamera` frustum is sampled only for verbose diagnostics and never adds an automatic zoom-ratio multiplier.
+Eagle Eye keeps the same freelook-equivalent input target on both axes (`eagleEyeY` stays 1.0). The rendered `NiCamera` frustum is classified on every look event for Eagle Eye / rendered-zoom tagging; sampled log emission is verbose-gated. Frustum values never multiply look input.
 
 ## Runtime strategy
 
@@ -48,9 +48,9 @@ This keeps live enable/disable and compatibility override changes safe. Vtables 
 `PlayerCharacter::ModifyMovementData` receives Skyrim's final yaw delta. Look-correction eligibility is split:
 
 - **Half-rate restore** (`restoreHalfRateYaw`): first-person while looking. CMC restores `lookX * deltaSeconds * pi` only when the observed scale is within `0.48..0.52` (orphan/cast needs two consecutive band hits; sprint/bow may restore on the first). Sprint/bow/casting are telemetry hints, not sole eligibility gates. Freelook yaw EMA rejects half-scale and casting samples.
-- **Slow-time compensation** (`compensateTimeYaw`): when the live `BSTimer::QGlobalTimeMultiplier` **Current** value (`RELOCATION_ID(511882, 388442)`) is in `(0.05, 0.90)` and the player is looking, multiply yaw by `1/timeMult` in first- or third-person — only when Current is stable and `delta` agrees with `realTimeDelta*Current` (else skip this frame). Do not use CommonLib's `GetCurrentGlobalTimeMult()` helper (it currently points at Target). This is not bow-gated (covers Eagle Eye and other slow-time). Order is always half-rate restore, then time compensation.
+- **Slow-time compensation** (`compensateTimeYaw`): when the live `BSTimer::QGlobalTimeMultiplier` **Current** value (`RELOCATION_ID(511882, 388442)`) is in `(0.05, 0.90)` and the player is looking in exclusive first- or third-person, convert game-time yaw to wall-clock. `ScaleByCurrent` (`yaw/Current`) applies only when Current is stable and `delta` agrees with `realTimeDelta*Current`. Disagree/Unstable with a valid `realTimeDelta` uses `RewriteWallClock` (`lookX * rtd * π`) — never `ScaleByCurrent` on those frames. Hard skip (`None`) only when wall/rtd is missing (and Current is not yet stably dilated). Do not use CommonLib's `GetCurrentGlobalTimeMult()` helper (it currently points at Target). This is not bow-gated (covers Eagle Eye and other slow-time). Order is always half-rate restore, then time compensation. First-person pitch normalize pauses while dilated+looking yaw was left uncompensated.
 
-Disabled hooks, optional menu/look-control gates, and idle (non-looking) frames leave rotation untouched. Rendered FOV remains diagnostic only.
+Disabled hooks, optional menu/look-control gates, and idle (non-looking) frames leave rotation untouched. Rendered FOV remains classification/telemetry only and never scales look input.
 
 ## Config model
 
