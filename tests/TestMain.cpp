@@ -75,6 +75,23 @@ namespace
         return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
     }
 
+    // Rewrite and advance mtime from the pre-write stamp. Adding to the post-write
+    // "now" can collapse to the same 1s Windows/MSVC file_time as the previous bump.
+    void RewriteWithNewerMtime(const std::filesystem::path& path, const std::string& text)
+    {
+        const auto previous = std::filesystem::last_write_time(path);
+        WriteText(path, text);
+        auto next = previous + std::chrono::seconds(2);
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            std::filesystem::last_write_time(path, next);
+            if (std::filesystem::last_write_time(path) != previous) {
+                return;
+            }
+            next += std::chrono::seconds(2);
+        }
+        CHECK(std::filesystem::last_write_time(path) != previous);
+    }
+
     void TestTransformAndRuntimeGates()
     {
         msf::HookCoordinator coordinator;
@@ -1179,9 +1196,7 @@ namespace
         CHECK(callbackCount == 7);
         CHECK(!values.keepThirdPersonSmoothingRemovalWithCameraMods);
 
-        const auto knownWriteTime = std::filesystem::last_write_time(iniPath);
-        WriteText(iniPath, "[General]\nbEnabled=false\niFocusSpikeGapMs=500\n");
-        std::filesystem::last_write_time(iniPath, knownWriteTime + std::chrono::seconds(2));
+        RewriteWithNewerMtime(iniPath, "[General]\nbEnabled=false\niFocusSpikeGapMs=500\n");
         CHECK(manager.ReloadIfChanged());
         values = manager.GetSnapshot();
         CHECK(callbackCount == 8);
@@ -1626,17 +1641,11 @@ namespace
         manager.SetConfigPath(iniPath);
         CHECK(manager.LoadFromIni(iniPath));
 
-        WriteText(iniPath, "[General]\nbEnabled=false\n");
-        std::filesystem::last_write_time(
-            iniPath,
-            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        RewriteWithNewerMtime(iniPath, "[General]\nbEnabled=false\n");
         CHECK(manager.ReloadIfChanged());
         CHECK(!manager.GetSnapshot().enabled);
 
-        WriteText(iniPath, "[General]\nbEnabled=true\niFocusSpikeGapMs=400\n");
-        std::filesystem::last_write_time(
-            iniPath,
-            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        RewriteWithNewerMtime(iniPath, "[General]\nbEnabled=true\niFocusSpikeGapMs=400\n");
         CHECK(!manager.ReloadIfChanged());
         CHECK(!manager.GetSnapshot().enabled);
 
@@ -1705,10 +1714,7 @@ namespace
         CHECK(manager.GetSnapshot().globalSensitivity == 2.0);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(260));
-        WriteText(iniPath, "[General]\nfGlobalSensitivity=3.0\n");
-        std::filesystem::last_write_time(
-            iniPath,
-            std::filesystem::last_write_time(iniPath) + std::chrono::seconds(2));
+        RewriteWithNewerMtime(iniPath, "[General]\nfGlobalSensitivity=3.0\n");
         CHECK(!manager.ReloadIfChanged());
         CHECK(manager.GetSnapshot().globalSensitivity == 2.0);
         CHECK(manager.GetSnapshot().bowAimMouseXMultiplier == 1.5);
