@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MouseSensitivityFix
-    VERSION 0.53.1
+    VERSION 0.53.2
     LANGUAGES CXX
 )
 
 # CMake VERSION is numeric; ZIP name and BuildIdentity use this public identity.
-set(MSF_PLUGIN_VERSION_STRING "0.53.1")
+set(MSF_PLUGIN_VERSION_STRING "0.53.2")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,13 +87,8 @@ if(MSF_BUILD_PLUGIN)
     install(FILES dist/Data/SKSE/Plugins/MouseSensitivityFix.ini
         DESTINATION Data/SKSE/Plugins
     )
-    install(FILES dist/README.md
-        DESTINATION .
-        RENAME README.md
-    )
-    install(FILES CHANGELOG.md
-        DESTINATION .
-    )
+    # ZIP is plugin payload only. README.md / CHANGELOG.md stay in git and GitHub
+    # release notes; they are not packed into the mod-manager archive.
 
     set(CPACK_GENERATOR "ZIP")
     set(CPACK_PACKAGE_FILE_NAME "Concise-Mouse-Consistency-${MSF_PLUGIN_VERSION_STRING}")

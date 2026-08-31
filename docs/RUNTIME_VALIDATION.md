@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed `0.53b` playtest | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. See playtest evidence below. |
+| `1.6.1170` | Steam AE | Passed `0.53b` playtest; `0.53.2` load 2026-08-31 | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. 2026-08-31 static-md rebuild loaded on SKSE 2.2.8 (handle 139, no error 126). See playtest evidence below. |
 | `1.7.99` | Steam AE | Pending | Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-99-0.bin`). Not playtested. |
 | `1.7.104` | Steam AE | Pending | Latest Steam AE. Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-104-0.bin`). Not playtested. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
@@ -90,6 +90,16 @@ CPack generated `Concise-Mouse-Consistency-0.53b.zip` with only `Data/SKSE/Plugi
 
 - DLL: 543,744 bytes, SHA-256 `910B83FBB2AAFB524B839D688DE07938A2155B942712697832E2DF5DB3EA0A63`
 - ZIP: 224,799 bytes, SHA-256 `F2B89279A5815EECA1E08F7954BCA5F98748FED0BAFBC58283A81B40CB812402`
+
+### 2026-08-31 `0.53.2` load (Steam `1.6.1170` / SKSE 2.2.8)
+
+The NG v7 `0.53.1` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 126 (`spdlog.dll` / `fmt.dll` PE imports). After switching the plugin preset to `x64-windows-static-md`, a 14:28 session loaded cleanly:
+
+- SKSE 2.2.8 runtime `01064920` (1.6.1170). `plugin MouseSensitivityFix.dll ... loaded correctly (handle 139)`. No `couldn't load plugin 126` for CMC (`plugin 126` in the log is SKSE messaging another plugin's handle).
+- `MouseSensitivityFix.log`: `BuildIdentity version=0.53.1` (pre-bump playtest binary) `bytes=698880`, `ImprovedCamera=yes SmoothCam=yes`, all four hooks installed, UI bridge registered, `Initialization complete`. No CMC errors or warnings. CrashLogger loaded; no dump from this session.
+- Deployed MO2 DLL SHA-256 matched `build-commonlib/Release/MouseSensitivityFix.dll`: `686306B12442810022F9B43DAACDADBD1B62A67C3F681867662D029B82206069`. `dumpbin /dependents` listed CRT/system DLLs only — no `spdlog.dll` / `fmt.dll`.
+- This is a load/smoke confirmation of the static-md fix, not a replay of the 2026-08-14 gameplay matrix. Version `0.53.2` is that same payload plus the ZIP no longer embedding README/CHANGELOG.
+- Shipped DLL: 698,880 bytes, SHA-256 `E68D9D03B40699B0C897682B01EF85E4BF6A7D75240C35BF975E9759478A206D` (version-string bump from the 14:28 playtest binary). ZIP `Concise-Mouse-Consistency-0.53.2.zip`: 308,899 bytes, SHA-256 `E0AE80AADCE246FDF73D83D50A417FE4F825D9897CE068B764B24D493FE588DD`. Archive contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`. Packaged INI has `bVerboseLogging=false`. Deployed MO2 DLL matches the shipped hash.
 
 ## Evidence required for a pass
 

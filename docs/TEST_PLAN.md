@@ -79,7 +79,7 @@ Validate in first-person and third-person:
 
 ## 8) Release Readiness
 
-- package has only required runtime files + docs
+- package has only required runtime files (DLL + INI; no README/CHANGELOG in the ZIP)
 - clean-profile install works
 - known issues are documented
 - update `docs/RUNTIME_VALIDATION.md` with runtime version, build commit, result, and evidence

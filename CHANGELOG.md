@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.53.2] - 2026-08-31
+
+### Fixed
+
+- SKSE can load CMC on 1.6.1170 / SKSE 2.2.8 again. The 0.53.1 NG v7 build dynamically imported `spdlog.dll` / `fmt.dll`, which were never packaged, so `LoadLibrary` failed with Windows 126. The plugin now uses the `x64-windows-static-md` vcpkg triplet (static libs, dynamic CRT) so those imports are gone. Look behavior is unchanged.
+
+### Changed
+
+- Release ZIP contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`. `README.md` and `CHANGELOG.md` stay in the git repo; GitHub release notes still quote this changelog in the release body.
+
 ## [0.53.1] - 2026-08-31
 
 ### Changed

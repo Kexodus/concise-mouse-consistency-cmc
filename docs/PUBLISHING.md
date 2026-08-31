@@ -21,7 +21,7 @@ Use this before cutting a public release.
    - `build-commonlib/Release/MouseSensitivityFix.dll`
 - Confirm release archive exists:
    - `build-commonlib/Concise-Mouse-Consistency-<version>.zip`
-- Inspect the archive and confirm it contains only the DLL, INI, runtime README, and changelog layout.
+- Inspect the archive and confirm it contains only the DLL and INI under `Data/SKSE/Plugins/`. Do not include `README.md` or `CHANGELOG.md` in the ZIP.
 - Extract the archive into a fresh empty directory and verify the DLL hash matches `build-commonlib/Release/MouseSensitivityFix.dll`.
 
 ## 3) Runtime validation
@@ -50,8 +50,8 @@ Include only:
 
 - `Data/SKSE/Plugins/MouseSensitivityFix.dll`
 - `Data/SKSE/Plugins/MouseSensitivityFix.ini`
-- `README.md`
-- `CHANGELOG.md`
+
+Do not pack `README.md` or `CHANGELOG.md` into the ZIP. Those stay in the git repo; GitHub release notes may quote CHANGELOG in the release body.
 
 The packaged INI must keep `bVerboseLogging=false`. Diagnostic playtest settings belong only in a local test install.
 

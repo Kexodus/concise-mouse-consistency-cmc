@@ -32,7 +32,7 @@ Project: **Concise Mouse Consistency (CMC)**.
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-<version>.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-<version>.zip` (DLL + INI only; README/CHANGELOG are not packed)
 
 The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies. `commonlibsse-ng` is resolved from `cmake/vcpkg-overlay-ports`, not the old colorglass registry. The first plugin configure compiles CommonLibSSE-NG from source and is slow.
 
