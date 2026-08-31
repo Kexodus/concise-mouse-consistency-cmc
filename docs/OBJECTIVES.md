@@ -13,9 +13,9 @@ Ship a DLL-only SKSE plugin that:
 
 ## Required
 
-- Use [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)
+- Use [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) (multi-runtime, Address Library v5 / Skyrim 1.7)
 - No ESP/ESL/ESM requirement
-- Support SE/AE/GOG runtimes handled by CommonLibSSE-NG + Address Library
+- Support SE/AE/GOG/VR plus Skyrim 1.7.99 / 1.7.104 in one DLL via CommonLibSSE-NG + Address Library
 - Offer SKSE Menu Framework UI with INI fallback
 - Keep compatibility surface focused on camera/input behavior only
 

@@ -36,9 +36,10 @@ Eagle Eye keeps the same freelook-equivalent input target on both axes (`eagleEy
 
 ## Runtime strategy
 
-- Built with `add_commonlibsse_plugin(...)`
-- CommonLibSSE-NG multi-runtime path for SE/AE/GOG/VR support
+- Built as one CommonLibSSE-NG DLL for SE / AE / GOG / VR, including Skyrim 1.7.99 / 1.7.104
+- `SKSEPlugin_Version` declares Address Library Post-AE, Address Library v5, and struct independence (pre- and post-1.6.629)
 - Relocation-based hooks isolated in hook module
+- ActorState still uses `RelocateMemberIfNewer` at the 1.6.629 breakpoint; `PlayerCamera` FOV/yaw/`bowZoomedIn` go through `GetRuntimeData2()`
 - all vtable hooks install transactionally at startup and remain installed
 - disabled features pass input through unchanged instead of removing/reinstalling hooks
 - config callbacks recompute compatibility policy and publish atomic runtime gates
@@ -76,6 +77,6 @@ Verbose logging is off in the release INI. When enabled, it emits low-frequency 
 
 ## Known risks
 
-- runtime updates can invalidate relocation assumptions
+- runtime updates can invalidate Address Library IDs or struct layouts (ActorState is still gated at 1.6.629; 1.7 in-game layout is unproven)
 - camera stacks from third-party mods can alter input order
-- behavior must be regression-tested after Skyrim updates
+- behavior must be regression-tested after Skyrim updates, including 1.7.99 / 1.7.104

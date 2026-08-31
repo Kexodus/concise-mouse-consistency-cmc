@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.53.1] - 2026-08-31
+
+### Changed
+
+- 1.7 loadability / Address Library v5 compat build of 0.53 gameplay. One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG / VR. Look behavior is unchanged from 0.53.
+- CommonLibSSE-NG is consumed from an overlay port of [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0` (`8b032fa`) instead of the stale colorglass / CharmedBaryon 3.5.3 pin.
+
+### Tests / Docs
+
+- Documented 1.7.99 / 1.7.104 as validation targets (in-game playtest still pending). SKSE 2.3.1 and Address Library `versionlib-1-7-*.bin` are required on those runtimes.
+
 ## [0.53] - 2026-08-14
 
 ### Changed

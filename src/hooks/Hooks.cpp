@@ -103,7 +103,7 @@ namespace msf
             return *value;
         }
 
-        // Local CommonLib omits BSTimer::GetSingleton; Address Library IDs match NG/VR.
+        // Address Library IDs match NG/VR (NG v7 also exposes BSTimer::GetSingleton).
         RE::BSTimer* ReadBsTimerSingleton() noexcept
         {
             REL::Relocation<RE::BSTimer*> singleton{
@@ -111,10 +111,15 @@ namespace msf
             return singleton.get();
         }
 
+        // NG v7 moved FOV/yaw/bowZoom behind RUNTIME_DATA2 (SE 0x13C / VR 0x158).
+        const RE::PlayerCamera::RUNTIME_DATA2& PlayerCameraRuntime2(const RE::PlayerCamera& camera) noexcept
+        {
+            return camera.GetRuntimeData2();
+        }
+
         // Binary SE/AE/VR layout: delta@0x18, realTimeDelta@0x1C.
-        // Local CommonLibSSE-NG omits pad0C after lastPerformanceCount, so
-        // offsetof(RE::BSTimer, realTimeDelta) is 0x18 (aliases binary delta).
-        // Always read via explicit offsets; static_assert catches a fixed CommonLib.
+        // alandtse CommonLibSSE-NG v7 matches that layout. Older NG omitted pad0C
+        // so member realTimeDelta aliased delta at 0x18. Always read +0x1C.
         float ReadBsTimerFieldAtOffset(const RE::BSTimer* timer, std::size_t offset) noexcept
         {
             if (!timer) {
@@ -632,7 +637,8 @@ namespace msf
                 state->firstPersonCameraObj->world.rotate.ToEulerAnglesXYZ(sample.worldEuler);
             }
             if (auto* camera = RE::PlayerCamera::GetSingleton()) {
-                sample.playerCameraYaw = camera->yaw;
+                const auto& cam2 = PlayerCameraRuntime2(*camera);
+                sample.playerCameraYaw = cam2.yaw;
                 sample.rotationInputX = camera->rotationInput.x;
                 sample.rotationInputY = camera->rotationInput.y;
             }
@@ -683,7 +689,7 @@ namespace msf
                 player ? GetWeaponStateRelocated(player) : RE::WEAPON_STATE::kSheathed;
             const bool weaponFullySheathed = weaponState == RE::WEAPON_STATE::kSheathed;
             const bool bowOut = rangedWeaponEquipped && IsWeaponDrawnRelocated(player);
-            const bool bowZoomFlag = camera && camera->bowZoomedIn;
+            const bool bowZoomFlag = camera && PlayerCameraRuntime2(*camera).bowZoomedIn;
             const bool effectiveBowZoomedIn =
                 isBowAim && (bowZoomFlag || g_lastRenderedZoomedIn);
             const std::string liveAimState =
@@ -1257,13 +1263,15 @@ namespace msf
             const bool weaponFullySheathed = weaponState == RE::WEAPON_STATE::kSheathed;
             const bool rangedWeaponActive = rangedWeaponEquipped && !weaponFullySheathed;
             const bool bowOut = rangedWeaponEquipped && IsWeaponDrawnRelocated(player);
-            const bool bowZoomFlag = camera && camera->bowZoomedIn;
+            const bool bowZoomFlag = camera && PlayerCameraRuntime2(*camera).bowZoomedIn;
 
             // Frustum / rendered-zoom classification feeds aim state and eagleEye
             // counters even when verbose logging is off. Heavy log emission stays gated.
-            float baseAimFov = camera
-                ? (inThirdPerson ? camera->worldFOV : camera->firstPersonFOV)
-                : 0.0F;
+            float baseAimFov = 0.0F;
+            if (camera) {
+                const auto& cam2 = PlayerCameraRuntime2(*camera);
+                baseAimFov = inThirdPerson ? cam2.worldFOV : cam2.firstPersonFOV;
+            }
             RenderedFovSample rendered = ReadRenderedFov(camera);
             float currentAimFov =
                 rendered.vFovDegrees > 0.0F ? rendered.vFovDegrees : baseAimFov;

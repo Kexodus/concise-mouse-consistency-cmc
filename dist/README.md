@@ -1,6 +1,6 @@
 # Concise Mouse Consistency (CMC)
 
-Release **0.53**.
+Release **0.53.1**.
 
 CMC is a DLL-only SKSE plugin that keeps mouse and gamepad look sensitivity consistent across Skyrim camera states.
 
@@ -12,8 +12,8 @@ Install the ZIP with a mod manager or copy its `Data` directory into Skyrim's ro
 
 Requirements:
 
-- SKSE64 matching the installed Skyrim runtime
-- Address Library for SKSE Plugins
+- SKSE64 matching the installed Skyrim runtime (SKSE 2.3.1 for Skyrim 1.7.99 / 1.7.104)
+- Address Library for SKSE Plugins (1.7.99+ needs the format-5 `versionlib-1-7-*.bin` files)
 - SKSE Menu Framework, optional
 
 ## Configure

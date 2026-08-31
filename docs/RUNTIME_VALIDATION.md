@@ -11,6 +11,8 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.1170` | Steam AE | Passed `0.53b` playtest | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. See playtest evidence below. |
+| `1.7.99` | Steam AE | Pending | Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-99-0.bin`). Not playtested. |
+| `1.7.104` | Steam AE | Pending | Latest Steam AE. Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-104-0.bin`). Not playtested. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
 | VR | Steam VR | Pending | No VR runtime is installed in the current test environment. Do not advertise validated VR support until this row passes. |
 

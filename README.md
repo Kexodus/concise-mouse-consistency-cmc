@@ -1,7 +1,7 @@
 # Concise Mouse Consistency (CMC)
 
 CMC is a DLL-only SKSE plugin for Skyrim Special Edition.
-One CommonLibSSE-NG build targets SE, AE, GOG, and VR. Release **0.53** is playtest-validated on Steam AE `1.6.1170`. SE `1.5.97`, AE `1.6.640`, GOG, and VR compile into the same DLL but are not yet in-game validated — see `docs/RUNTIME_VALIDATION.md`.
+One CommonLibSSE-NG build targets SE, AE, GOG, and VR. Release **0.53.1** adds Address Library v5 so SKSE 2.3.1 can load the same DLL on Skyrim 1.7.99 / 1.7.104 without changing 0.53 gameplay. Playtest-validated on Steam AE `1.6.1170`; 1.7 and other runtimes compile into the same DLL but are not yet in-game validated — see `docs/RUNTIME_VALIDATION.md`.
 
 It keeps mouse and gamepad look sensitivity consistent across camera states, restores first-person yaw that Skyrim halves or slows, and can remove third-person camera interpolation.
 
@@ -25,8 +25,8 @@ CMC does not replace camera mods, apply automatic FOV-based input scaling, or no
 
 ## Runtime requirements
 
-- SKSE64 matching your game runtime
-- Address Library for SKSE Plugins
+- SKSE64 matching your game runtime (SKSE 2.3.1 on Skyrim 1.7.99 / 1.7.104; SKSE 2.2.6 remains the 1.6.1170 target)
+- Address Library for SKSE Plugins (1.7.99+ needs the format-5 `versionlib-1-7-*.bin` files)
 - SKSE Menu Framework (optional)
 
 ## Build
@@ -44,7 +44,7 @@ cmake --build --preset plugin-release --target package
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.53.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.53.1.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.
@@ -63,7 +63,8 @@ The codebase produces one CommonLibSSE-NG multi-runtime DLL. Runtime validation 
 
 - `1.5.97` (SE)
 - `1.6.640` (AE)
-- latest `1.6.x` Steam
+- `1.6.1170` (Steam AE)
+- `1.7.99` / `1.7.104` (Steam AE 1.7; SKSE 2.3.1 + Address Library v5)
 - latest supported GOG build
 - VR
 
