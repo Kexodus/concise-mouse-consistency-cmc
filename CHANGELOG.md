@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.54b] - 2026-08-31
+
+### Added
+
+- Opt-in per-state look overlays (Walking, Running, Sprinting, Bow pullback/aiming, Magic use, One Hand, Two Handed, Dual Wielding). Each ships Disabled so 0.53b feel is unchanged until a page is unchecked.
+- SKSE Menu pages under Concise Mouse Consistency / State Overrides, plus matching INI sections. One X/Y pair per state; exact first- or third-person gates.
+- When the Bow overlay is enabled it replaces `fBowAim*` for that event. Disabled leaves `fBowAim*` as 0.53b. Reconstruct X and engine Y still run. FOV is never a multiplier.
+
+### Changed
+
+- One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG / VR compatibility.
+- CommonLibSSE-NG is consumed from an overlay port of [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0` (`8b032fa`) instead of the stale colorglass / CharmedBaryon 3.5.3 pin.
+
+### Fixed
+
+- `ParseBool` now accepts `TRUE`/`FALSE` (any case) so unchecking Disabled in the INI actually enables an overlay.
+
+### Tests / Docs
+
+- Resolver, composition, person-gate, priority, bow replace-not-stack, `FALSE` opt-in, and dist-INI Disabled defaults.
+- Documented 1.7.99 / 1.7.104 as validation targets (in-game playtest still pending). SKSE 2.3.1 and Address Library `versionlib-1-7-*.bin` are required on those runtimes.
+
 ## [0.53b] - 2026-08-14
 
 ### Changed

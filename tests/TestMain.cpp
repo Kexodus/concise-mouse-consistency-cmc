@@ -1537,6 +1537,21 @@ namespace
         CHECK(Near(msf::CalculateBowAimVerticalMultiplier(true, 0.75F), 0.75F));
         constexpr float eagleEyeY = 1.0F;
         CHECK(Near(eagleEyeY, 1.0F));
+
+        msf::ConfigValues overlayConfig;
+        overlayConfig.globalSensitivity = 1.25;
+        overlayConfig.mouseXAxisMultiplier = 0.8;
+        overlayConfig.mouseYAxisMultiplier = 1.1;
+        const auto composed = msf::ApplyLookComposition(
+            2.0F,
+            -3.0F,
+            overlayConfig,
+            false,
+            msf::LookOverrideState::Walking,
+            true,
+            false);
+        CHECK(Near(composed.first, first.first));
+        CHECK(Near(composed.second, first.second));
     }
 
     void TestFocusSpikeSuppressionHelper()
@@ -1613,6 +1628,24 @@ namespace
         CHECK(savedText.find("Does not scale by zoom/FOV") != std::string::npos);
         CHECK(savedText.find("pitch normalize") != std::string::npos);
         CHECK(savedText.find("bKeepThirdPersonSmoothingRemovalWithCameraMods") != std::string::npos);
+        CHECK(savedText.find("bWalkingDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bRunningDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bSprintingDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bBowAimDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bMagicUseDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bOneHandDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bTwoHandedDisabled=true") != std::string::npos);
+        CHECK(savedText.find("bDualWieldingDisabled=true") != std::string::npos);
+        CHECK(savedText.find("FOV is never a multiplier") != std::string::npos);
+        CHECK(savedText.find("leaves fBowAim*") != std::string::npos);
+        CHECK(values.walking.disabled);
+        CHECK(values.running.disabled);
+        CHECK(values.sprinting.disabled);
+        CHECK(values.bowAim.disabled);
+        CHECK(values.magicUse.disabled);
+        CHECK(values.oneHand.disabled);
+        CHECK(values.twoHanded.disabled);
+        CHECK(values.dualWielding.disabled);
     }
 
     void TestReloadThrottleAndDistIniDefaults()
@@ -1681,8 +1714,22 @@ namespace
         CHECK(distValues.bowAimGamepadYMultiplier == 1.0);
         CHECK(distValues.keepThirdPersonSmoothingRemovalWithCameraMods);
         CHECK(distValues.focusSpikeGapMs == 350);
+        CHECK(distValues.walking.disabled);
+        CHECK(distValues.running.disabled);
+        CHECK(distValues.sprinting.disabled);
+        CHECK(distValues.bowAim.disabled);
+        CHECK(distValues.magicUse.disabled);
+        CHECK(distValues.oneHand.disabled);
+        CHECK(distValues.twoHanded.disabled);
+        CHECK(distValues.dualWielding.disabled);
+        CHECK(distValues.walking.xSensitivity == 1.0);
+        CHECK(distValues.walking.ySensitivity == 1.0);
         const auto distText = ReadText(distIni);
         CHECK(distText.find("bVerboseLogging=false") != std::string::npos);
+        CHECK(distText.find("bWalkingDisabled=true") != std::string::npos);
+        CHECK(distText.find("bBowAimDisabled=true") != std::string::npos);
+        CHECK(distText.find("Disabled=true (default) keeps 0.53b feel") != std::string::npos);
+        CHECK(distText.find("FOV is never a multiplier") != std::string::npos);
     }
 
     void TestUnsavedUiIsNotClobberedByReload()
@@ -1717,6 +1764,251 @@ namespace
         CHECK(manager.SaveToIni(iniPath));
         CHECK(!manager.HasUnsavedChanges());
         CHECK(ReadText(iniPath).find("fGlobalSensitivity=2") != std::string::npos);
+    }
+
+    void ExpectDefaultOverlaysDisabled(const msf::ConfigValues& config)
+    {
+        const msf::StateLookOverride* overlays[] = {
+            &config.walking,
+            &config.running,
+            &config.sprinting,
+            &config.bowAim,
+            &config.magicUse,
+            &config.oneHand,
+            &config.twoHanded,
+            &config.dualWielding
+        };
+        for (const auto* overlay : overlays) {
+            CHECK(overlay->disabled);
+            CHECK(overlay->xSensitivity == 1.0);
+            CHECK(overlay->ySensitivity == 1.0);
+            CHECK(overlay->applyFirstPerson);
+            CHECK(overlay->applyThirdPerson);
+        }
+    }
+
+    void TestParseBoolAcceptsTrueFalseCaseInsensitive()
+    {
+        CHECK(msf::ParseBool("true", false));
+        CHECK(msf::ParseBool("TRUE", false));
+        CHECK(msf::ParseBool("True", false));
+        CHECK(msf::ParseBool("1", false));
+        CHECK(!msf::ParseBool("false", true));
+        CHECK(!msf::ParseBool("FALSE", true));
+        CHECK(!msf::ParseBool("False", true));
+        CHECK(!msf::ParseBool("0", true));
+        CHECK(msf::ParseBool("yes", true));
+        CHECK(!msf::ParseBool("nope", false));
+
+        TemporaryDirectory directory;
+        const auto iniPath = directory.Path() / "MouseSensitivityFix.ini";
+        WriteText(
+            iniPath,
+            "[Walking]\n"
+            "bWalkingDisabled=FALSE\n"
+            "fWalkingXSensitivity=2.0\n");
+        auto& manager = msf::ConfigManager::Get();
+        manager.SetChangeCallback({});
+        CHECK(manager.LoadFromIni(iniPath));
+        const auto values = manager.GetSnapshot();
+        CHECK(!values.walking.disabled);
+        CHECK(values.walking.xSensitivity == 2.0);
+    }
+
+    void TestStateLookOverrideDefaultsAndDisabledNoOp()
+    {
+        msf::ConfigValues config;
+        ExpectDefaultOverlaysDisabled(config);
+
+        msf::HookCoordinator coordinator;
+        const auto expected = coordinator.ApplyTransform(2.0F, -3.0F, config, false);
+        const auto walking = msf::ApplyLookComposition(
+            2.0F, -3.0F, config, false, msf::LookOverrideState::Walking, true, false);
+        const auto bow = msf::ApplyLookComposition(
+            2.0F, -3.0F, config, false, msf::LookOverrideState::BowAim, true, false);
+        CHECK(Near(walking.first, expected.first));
+        CHECK(Near(walking.second, expected.second));
+        CHECK(Near(bow.first, expected.first));
+        CHECK(Near(bow.second, expected.second));
+
+        config.walking.disabled = true;
+        config.walking.xSensitivity = 0.25;
+        config.walking.ySensitivity = 4.0;
+        const auto stillNoOp = msf::ApplyLookComposition(
+            2.0F, -3.0F, config, false, msf::LookOverrideState::Walking, true, false);
+        CHECK(Near(stillNoOp.first, expected.first));
+        CHECK(Near(stillNoOp.second, expected.second));
+        CHECK(!msf::IsLookOverrideActive(config.walking, true, false));
+    }
+
+    void TestStateLookOverridePersonGates()
+    {
+        msf::ConfigValues config;
+        config.walking.disabled = false;
+        config.walking.xSensitivity = 2.0;
+        config.walking.ySensitivity = 3.0;
+        config.walking.applyFirstPerson = true;
+        config.walking.applyThirdPerson = false;
+
+        const auto fp = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::Walking, true, false);
+        const auto tp = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::Walking, false, true);
+        const auto neither = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::Walking, false, false);
+        const auto both = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::Walking, true, true);
+        CHECK(Near(fp.first, 2.0F));
+        CHECK(Near(fp.second, 3.0F));
+        CHECK(Near(tp.first, 1.0F));
+        CHECK(Near(tp.second, 1.0F));
+        CHECK(Near(neither.first, 1.0F));
+        CHECK(Near(neither.second, 1.0F));
+        CHECK(Near(both.first, 1.0F));
+        CHECK(Near(both.second, 1.0F));
+
+        config.walking.applyFirstPerson = false;
+        config.walking.applyThirdPerson = false;
+        const auto neitherGate = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::Walking, true, false);
+        CHECK(Near(neitherGate.first, 1.0F));
+        CHECK(Near(neitherGate.second, 1.0F));
+    }
+
+    void TestStateLookOverridePriority()
+    {
+        msf::LookOverrideFacts allTrue{};
+        allTrue.bowAim = true;
+        allTrue.magicUse = true;
+        allTrue.sprinting = true;
+        allTrue.dualWielding = true;
+        allTrue.twoHanded = true;
+        allTrue.oneHand = true;
+        allTrue.running = true;
+        allTrue.walking = true;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::BowAim);
+
+        allTrue.bowAim = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::MagicUse);
+        allTrue.magicUse = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::Sprinting);
+        allTrue.sprinting = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::DualWielding);
+        allTrue.dualWielding = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::TwoHanded);
+        allTrue.twoHanded = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::OneHand);
+        allTrue.oneHand = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::Running);
+        allTrue.running = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::Walking);
+        allTrue.walking = false;
+        CHECK(msf::ResolveLookOverrideState(allTrue) == msf::LookOverrideState::None);
+
+        const auto idle = msf::ClassifyLookOverrideLocomotion(false, true, false, false);
+        CHECK(!idle.walking);
+        CHECK(!idle.running);
+        const auto walk = msf::ClassifyLookOverrideLocomotion(true, true, false, false);
+        CHECK(walk.walking);
+        CHECK(!walk.running);
+        const auto run = msf::ClassifyLookOverrideLocomotion(true, true, true, false);
+        CHECK(!run.walking);
+        CHECK(run.running);
+        const auto sprint = msf::ClassifyLookOverrideLocomotion(true, true, true, true);
+        CHECK(!sprint.walking);
+        CHECK(!sprint.running);
+        CHECK(sprint.sprinting);
+
+        const auto bow = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::Bow, msf::EquippedHandKind::Empty, true);
+        CHECK(!bow.twoHanded);
+        CHECK(!bow.oneHand);
+        const auto twoHand = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::TwoHandMelee, msf::EquippedHandKind::Empty, true);
+        CHECK(twoHand.twoHanded);
+        const auto oneHand = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::OneHandMelee, msf::EquippedHandKind::Shield, true);
+        CHECK(oneHand.oneHand);
+        CHECK(!oneHand.dualWielding);
+        const auto dual = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::OneHandMelee, msf::EquippedHandKind::OneHandMelee, true);
+        CHECK(dual.dualWielding);
+        const auto sheathed = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::OneHandMelee, msf::EquippedHandKind::Empty, false);
+        CHECK(!sheathed.oneHand);
+        const auto staff = msf::ClassifyLookOverrideWeaponStyle(
+            msf::EquippedHandKind::Staff, msf::EquippedHandKind::Empty, true);
+        CHECK(!staff.twoHanded);
+        CHECK(!staff.oneHand);
+    }
+
+    void TestBowOverlayReplacesLegacyBowAimMultipliers()
+    {
+        msf::ConfigValues config;
+        config.bowAimMouseXMultiplier = 0.35;
+        config.bowAimMouseYMultiplier = 0.35;
+        config.bowAimGamepadXMultiplier = 0.35;
+        config.bowAimGamepadYMultiplier = 0.35;
+        config.bowAim.disabled = false;
+        config.bowAim.xSensitivity = 2.0;
+        config.bowAim.ySensitivity = 3.0;
+
+        const auto replaced = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, false, msf::LookOverrideState::BowAim, true, false);
+        CHECK(Near(replaced.first, 2.0F));
+        CHECK(Near(replaced.second, 3.0F));
+        CHECK(!Near(replaced.first, 0.35F * 2.0F));
+
+        const auto gamepad = msf::ApplyLookComposition(
+            1.0F, 1.0F, config, true, msf::LookOverrideState::BowAim, true, false);
+        CHECK(Near(gamepad.first, 2.0F));
+        CHECK(Near(gamepad.second, 3.0F));
+
+        const auto [bowX, bowY] = msf::SelectBowAimAxisMultipliers(config, false, true, false);
+        CHECK(Near(bowX, 2.0F));
+        CHECK(Near(bowY, 3.0F));
+    }
+
+    void TestBowOverlayDisabledLeavesLegacyBowAim()
+    {
+        msf::ConfigValues config;
+        config.bowAimMouseXMultiplier = 0.35;
+        config.bowAimMouseYMultiplier = 0.35;
+        config.bowAimGamepadXMultiplier = 0.5;
+        config.bowAimGamepadYMultiplier = 0.25;
+        config.bowAim.disabled = true;
+        config.bowAim.xSensitivity = 4.0;
+        config.bowAim.ySensitivity = 5.0;
+
+        const auto mouse = msf::ApplyLookComposition(
+            2.0F, -2.0F, config, false, msf::LookOverrideState::BowAim, true, false);
+        CHECK(Near(mouse.first, 2.0F * 0.35F));
+        CHECK(Near(mouse.second, -2.0F * 0.35F));
+
+        const auto gamepad = msf::ApplyLookComposition(
+            2.0F, -2.0F, config, true, msf::LookOverrideState::BowAim, false, true);
+        CHECK(Near(gamepad.first, 2.0F * 0.5F));
+        CHECK(Near(gamepad.second, -2.0F * 0.25F));
+
+        const auto tpMouse = msf::SelectBowAimAxisMultipliers(config, false, false, true);
+        CHECK(Near(tpMouse.first, 1.0F));
+        CHECK(Near(tpMouse.second, 1.0F));
+    }
+
+    void TestLookCompositionIgnoresFov()
+    {
+        msf::ConfigValues config;
+        config.walking.disabled = false;
+        config.walking.xSensitivity = 1.5;
+        config.walking.ySensitivity = 0.5;
+        const float unusedVFov = 29.5F;
+        const float unusedHFov = 50.5F;
+        (void)unusedVFov;
+        (void)unusedHFov;
+        const auto composed = msf::ApplyLookComposition(
+            2.0F, -4.0F, config, false, msf::LookOverrideState::Walking, true, false);
+        CHECK(Near(composed.first, 3.0F));
+        CHECK(Near(composed.second, -2.0F));
     }
 }
 
@@ -1760,6 +2052,13 @@ int main()
         { "config completeness and smoothing gate", TestConfigCompletenessAndSmoothingGate },
         { "reload throttle and dist INI defaults", TestReloadThrottleAndDistIniDefaults },
         { "unsaved UI is not clobbered by reload", TestUnsavedUiIsNotClobberedByReload },
+        { "ParseBool accepts TRUE/FALSE", TestParseBoolAcceptsTrueFalseCaseInsensitive },
+        { "state look override defaults and disabled no-op", TestStateLookOverrideDefaultsAndDisabledNoOp },
+        { "state look override person gates", TestStateLookOverridePersonGates },
+        { "state look override priority", TestStateLookOverridePriority },
+        { "bow overlay replaces legacy fBowAim", TestBowOverlayReplacesLegacyBowAimMultipliers },
+        { "bow overlay disabled leaves fBowAim", TestBowOverlayDisabledLeavesLegacyBowAim },
+        { "look composition ignores FOV", TestLookCompositionIgnoresFov },
     };
 
     int failures = 0;

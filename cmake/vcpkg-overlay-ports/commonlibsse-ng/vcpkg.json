@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+  "name": "commonlibsse-ng",
+  "version-semver": "7.0.0",
+  "port-version": 0,
+  "description": "Multi-runtime CommonLibSSE-NG (alandtse) with Address Library format 5 / Skyrim 1.7.99+ support.",
+  "homepage": "https://github.com/alandtse/CommonLibSSE-NG",
+  "license": "MIT",
+  "supports": "windows & x64",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "directxtk",
+    "rapidcsv",
+    "spdlog",
+    "xbyak"
+  ]
+}

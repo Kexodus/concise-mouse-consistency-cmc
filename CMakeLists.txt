@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MouseSensitivityFix
-    VERSION 0.53.0
+    VERSION 0.54.0
     LANGUAGES CXX
 )
 
 # CMake VERSION is numeric; ZIP name and BuildIdentity use this public identity.
-set(MSF_PLUGIN_VERSION_STRING "0.53b")
+set(MSF_PLUGIN_VERSION_STRING "0.54b")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,18 +40,28 @@ if(MSF_BUILD_PLUGIN)
         src/ui/MenuFrameworkBridge.cpp
     )
 
-    find_package(CommonLibSSE REQUIRED)
+    find_package(CommonLibSSE CONFIG REQUIRED)
 
-    add_commonlibsse_plugin(${PROJECT_NAME}
-        SOURCES ${MSF_PLUGIN_SOURCES}
-    )
+    # SKSEPlugin_Version / SKSEPlugin_Query are defined in src/main.cpp so we can
+    # declare Address Library v5 plus NoStructUse without relying on NG's
+    # generated PluginDeclaration (Independent currently maps to NoStructUse only).
+    add_library(${PROJECT_NAME} SHARED ${MSF_PLUGIN_SOURCES})
     target_link_libraries(${PROJECT_NAME}
         PRIVATE CommonLibSSE::CommonLibSSE
     )
+    if(NOT PROJECT_VERSION_TWEAK)
+        set(MSF_PLUGIN_VERSION_TWEAK 0)
+    else()
+        set(MSF_PLUGIN_VERSION_TWEAK ${PROJECT_VERSION_TWEAK})
+    endif()
     target_compile_definitions(${PROJECT_NAME}
         PRIVATE
             MSF_USE_COMMONLIBSSE=1
             MSF_PLUGIN_VERSION="${MSF_PLUGIN_VERSION_STRING}"
+            MSF_PLUGIN_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+            MSF_PLUGIN_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+            MSF_PLUGIN_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+            MSF_PLUGIN_VERSION_TWEAK=${MSF_PLUGIN_VERSION_TWEAK}
     )
     if(MSVC)
         target_compile_options(${PROJECT_NAME}

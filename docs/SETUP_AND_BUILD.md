@@ -8,12 +8,12 @@ Project: **Concise Mouse Consistency (CMC)**.
 - CMake 3.24+
 - Git and PowerShell 5.1+
 - SKSE64 development headers/runtime for target Skyrim version
-- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG), installed automatically through the pinned vcpkg manifest
+- [CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0`, installed from the overlay port in `cmake/vcpkg-overlay-ports/commonlibsse-ng` (pins commit `8b032fa992750d654d6d38a33731714d8b86be1f`). This fork still builds SE+AE+VR and parses Address Library format 5. Do not substitute [powerof3/CommonLibSSE](https://github.com/powerof3/CommonLibSSE); that tree is AE-only.
 
 ## Runtime Dependencies
 
-- SKSE64 runtime component
-- Address Library for SKSE Plugins
+- SKSE64 runtime component matching the game (SKSE 2.3.1 on 1.7.99 / 1.7.104)
+- Address Library for SKSE Plugins (`versionlib-1-7-*.bin` on 1.7.99+)
 - SKSE Menu Framework (optional for in-game UI)
 
 ## Clean-clone build
@@ -34,7 +34,7 @@ Outputs:
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
 - ZIP: `build-commonlib/Concise-Mouse-Consistency-<version>.zip`
 
-The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies.
+The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies. `commonlibsse-ng` is resolved from `cmake/vcpkg-overlay-ports`, not the old colorglass registry. The first plugin configure compiles CommonLibSSE-NG from source and is slow.
 
 ## Dependency-free tests
 

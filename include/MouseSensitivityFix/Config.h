@@ -6,9 +6,21 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace msf
 {
+    // Opt-in per-state look overlay. Disabled (default) is a no-op so 0.53b feel
+    // is unchanged. One X/Y pair is shared by mouse and gamepad.
+    struct StateLookOverride
+    {
+        bool disabled{ true };
+        double xSensitivity{ 1.0 };
+        double ySensitivity{ 1.0 };
+        bool applyFirstPerson{ true };
+        bool applyThirdPerson{ true };
+    };
+
     struct ConfigValues
     {
         bool enabled{ true };
@@ -36,6 +48,15 @@ namespace msf
         double bowAimMouseYMultiplier{ 1.0 };
         double bowAimGamepadXMultiplier{ 1.0 };
         double bowAimGamepadYMultiplier{ 1.0 };
+
+        StateLookOverride walking{};
+        StateLookOverride running{};
+        StateLookOverride sprinting{};
+        StateLookOverride bowAim{};
+        StateLookOverride magicUse{};
+        StateLookOverride oneHand{};
+        StateLookOverride twoHanded{};
+        StateLookOverride dualWielding{};
     };
 
     class ConfigManager
@@ -67,4 +88,7 @@ namespace msf
     };
 
     int ClampFocusSpikeGapMs(int value) noexcept;
+    // Case-insensitive true/false/1/0. Unknown spellings keep fallback
+    // (so FALSE can actually enable an override).
+    bool ParseBool(std::string_view value, bool fallback);
 }

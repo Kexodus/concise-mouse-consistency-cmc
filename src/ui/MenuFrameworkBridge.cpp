@@ -45,6 +45,14 @@ namespace msf
         bool g_lastSaveAttempted{ false };
 
         const char* kMenuPath = "Concise Mouse Consistency/Settings";
+        const char* kWalkingPath = "Concise Mouse Consistency/State Overrides/Walking";
+        const char* kRunningPath = "Concise Mouse Consistency/State Overrides/Running";
+        const char* kSprintingPath = "Concise Mouse Consistency/State Overrides/Sprinting";
+        const char* kBowAimPath = "Concise Mouse Consistency/State Overrides/Bow pullback aiming";
+        const char* kMagicUsePath = "Concise Mouse Consistency/State Overrides/Magic use";
+        const char* kOneHandPath = "Concise Mouse Consistency/State Overrides/One Hand";
+        const char* kTwoHandedPath = "Concise Mouse Consistency/State Overrides/Two Handed";
+        const char* kDualWieldingPath = "Concise Mouse Consistency/State Overrides/Dual Wielding";
         const auto kConfigPath = std::filesystem::path("Data/SKSE/Plugins/MouseSensitivityFix.ini");
 
         template <class T>
@@ -130,6 +138,7 @@ namespace msf
                 changed = true;
             }
             UiText("Gamepad bow X/Y stay in the INI.");
+            UiText("Optional per-state look overlays are under Concise Mouse Consistency / State Overrides. Leave Disabled checked to keep 0.53b feel.");
 
             // ── Compatibility ─────────────────────────────────────────────────
             UiSeparatorText("Compatibility");
@@ -167,6 +176,91 @@ namespace msf
             } else {
                 UiText("Last operation failed. Check log for details.");
             }
+        }
+
+        void RenderStateOverrideEditor(StateLookOverride& overlay, const char* help, bool& changed)
+        {
+            changed |= g_api.Checkbox("Disabled", &overlay.disabled);
+            UiText(help);
+            float x = static_cast<float>(overlay.xSensitivity);
+            float y = static_cast<float>(overlay.ySensitivity);
+            if (g_api.SliderFloat("X sensitivity", &x, 0.01F, 20.0F, "%.2f", 0)) {
+                overlay.xSensitivity = static_cast<double>(x);
+                changed = true;
+            }
+            if (g_api.SliderFloat("Y sensitivity", &y, 0.01F, 20.0F, "%.2f", 0)) {
+                overlay.ySensitivity = static_cast<double>(y);
+                changed = true;
+            }
+            changed |= g_api.Checkbox("Apply in first person", &overlay.applyFirstPerson);
+            changed |= g_api.Checkbox("Apply in third person", &overlay.applyThirdPerson);
+        }
+
+        void RenderStateOverridePage(StateLookOverride ConfigValues::* member, const char* help)
+        {
+            auto values = ConfigManager::Get().GetSnapshot();
+            bool changed = false;
+            RenderStateOverrideEditor(values.*member, help, changed);
+            if (changed) {
+                ConfigManager::Get().ApplyUiUpdate(values);
+                g_lastSaveAttempted = false;
+            }
+        }
+
+        void __stdcall RenderWalkingPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::walking,
+                "When Disabled is checked, walking look is unchanged from 0.53b. Uncheck to apply X/Y while moving at walk (not run/sprint, not standing still).");
+        }
+
+        void __stdcall RenderRunningPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::running,
+                "When Disabled is checked, running look is unchanged from 0.53b. Uncheck to apply X/Y while running (not sprint, not standing still).");
+        }
+
+        void __stdcall RenderSprintingPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::sprinting,
+                "When Disabled is checked, sprint look is unchanged from 0.53b. Uncheck to apply X/Y while sprinting. Sprint wins over weapon style and walk/run.");
+        }
+
+        void __stdcall RenderBowAimPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::bowAim,
+                "Bow pullback/aiming, including Eagle Eye frames that are still bowAim. Disabled leaves fBowAim* as 0.53b. Enabled replaces fBowAim* (does not multiply). Reconstruct X and engine Y still run. FOV is never a multiplier.");
+        }
+
+        void __stdcall RenderMagicUsePage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::magicUse,
+                "When Disabled is checked, magic look is unchanged from 0.53b. Uncheck to apply X/Y while charging or casting. A staff or spell merely equipped does not count.");
+        }
+
+        void __stdcall RenderOneHandPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::oneHand,
+                "When Disabled is checked, one-hand look is unchanged from 0.53b. Uncheck to apply X/Y with a one-handed weapon drawn and the other hand empty or a shield. Not bow, staff, or two-hander.");
+        }
+
+        void __stdcall RenderTwoHandedPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::twoHanded,
+                "When Disabled is checked, two-handed look is unchanged from 0.53b. Uncheck to apply X/Y with a drawn greatsword, battleaxe, or warhammer. Bows and staves do not count.");
+        }
+
+        void __stdcall RenderDualWieldingPage()
+        {
+            RenderStateOverridePage(
+                &ConfigValues::dualWielding,
+                "When Disabled is checked, dual-wield look is unchanged from 0.53b. Uncheck to apply X/Y with one-handed weapons drawn in both hands.");
         }
 
         bool ResolveFrameworkApi()
@@ -210,8 +304,16 @@ namespace msf
         }
 
         g_api.AddSectionItem(kMenuPath, RenderSettingsPage);
+        g_api.AddSectionItem(kWalkingPath, RenderWalkingPage);
+        g_api.AddSectionItem(kRunningPath, RenderRunningPage);
+        g_api.AddSectionItem(kSprintingPath, RenderSprintingPage);
+        g_api.AddSectionItem(kBowAimPath, RenderBowAimPage);
+        g_api.AddSectionItem(kMagicUsePath, RenderMagicUsePage);
+        g_api.AddSectionItem(kOneHandPath, RenderOneHandPage);
+        g_api.AddSectionItem(kTwoHandedPath, RenderTwoHandedPage);
+        g_api.AddSectionItem(kDualWieldingPath, RenderDualWieldingPage);
         g_registered = true;
-        LogInfo("UI Bridge initialized: registered SKSE Menu Framework settings page.");
+        LogInfo("UI Bridge initialized: registered SKSE Menu Framework settings and state-override pages.");
 
         return true;
     }

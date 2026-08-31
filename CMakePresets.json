@@ -27,7 +27,8 @@
         "MSF_BUILD_PLUGIN": "ON",
         "MSF_BUILD_TESTS": "ON",
         "MSF_WARNINGS_AS_ERRORS": "ON",
-        "VCPKG_TARGET_TRIPLET": "x64-windows"
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/vcpkg-overlay-ports"
       }
     }
   ],

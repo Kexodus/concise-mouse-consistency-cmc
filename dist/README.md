@@ -10,8 +10,8 @@ Install the ZIP with a mod manager or copy its `Data` directory into Skyrim's ro
 
 Requirements:
 
-- SKSE64 matching the installed Skyrim runtime
-- Address Library for SKSE Plugins
+- SKSE64 matching the installed Skyrim runtime (SKSE 2.3.1 for Skyrim 1.7.99 / 1.7.104)
+- Address Library for SKSE Plugins (1.7.99+ needs the format-5 `versionlib-1-7-*.bin` files)
 - SKSE Menu Framework, optional
 
 ## Configure

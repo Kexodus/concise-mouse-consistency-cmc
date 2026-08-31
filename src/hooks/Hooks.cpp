@@ -32,6 +32,7 @@
 #include <RE/P/PlayerControls.h>
 #include <RE/P/PlayerControlsData.h>
 #include <RE/RTTI.h>
+#include <RE/T/TESObjectARMO.h>
 #include <RE/T/TESObjectWEAP.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
@@ -103,7 +104,7 @@ namespace msf
             return *value;
         }
 
-        // Local CommonLib omits BSTimer::GetSingleton; Address Library IDs match NG/VR.
+        // Address Library IDs match NG/VR (NG v7 also exposes BSTimer::GetSingleton).
         RE::BSTimer* ReadBsTimerSingleton() noexcept
         {
             REL::Relocation<RE::BSTimer*> singleton{
@@ -111,10 +112,15 @@ namespace msf
             return singleton.get();
         }
 
+        // NG v7 moved FOV/yaw/bowZoom behind RUNTIME_DATA2 (SE 0x13C / VR 0x158).
+        const RE::PlayerCamera::RUNTIME_DATA2& PlayerCameraRuntime2(const RE::PlayerCamera& camera) noexcept
+        {
+            return camera.GetRuntimeData2();
+        }
+
         // Binary SE/AE/VR layout: delta@0x18, realTimeDelta@0x1C.
-        // Local CommonLibSSE-NG omits pad0C after lastPerformanceCount, so
-        // offsetof(RE::BSTimer, realTimeDelta) is 0x18 (aliases binary delta).
-        // Always read via explicit offsets; static_assert catches a fixed CommonLib.
+        // alandtse CommonLibSSE-NG v7 matches that layout. Older NG omitted pad0C
+        // so member realTimeDelta aliased delta at 0x18. Always read +0x1C.
         float ReadBsTimerFieldAtOffset(const RE::BSTimer* timer, std::size_t offset) noexcept
         {
             if (!timer) {
@@ -424,6 +430,76 @@ namespace msf
                    attackState <= RE::ATTACK_STATE_ENUM::kBowNextAttack;
         }
 
+        EquippedHandKind ClassifyEquippedHand(RE::TESForm* object) noexcept
+        {
+            if (!object) {
+                return EquippedHandKind::Empty;
+            }
+            if (auto* weapon = skyrim_cast<RE::TESObjectWEAP*>(object)) {
+                switch (weapon->GetWeaponType()) {
+                case RE::WEAPON_TYPE::kOneHandSword:
+                case RE::WEAPON_TYPE::kOneHandDagger:
+                case RE::WEAPON_TYPE::kOneHandAxe:
+                case RE::WEAPON_TYPE::kOneHandMace:
+                    return EquippedHandKind::OneHandMelee;
+                case RE::WEAPON_TYPE::kTwoHandSword:
+                case RE::WEAPON_TYPE::kTwoHandAxe:
+                    return EquippedHandKind::TwoHandMelee;
+                case RE::WEAPON_TYPE::kBow:
+                case RE::WEAPON_TYPE::kCrossbow:
+                    return EquippedHandKind::Bow;
+                case RE::WEAPON_TYPE::kStaff:
+                    return EquippedHandKind::Staff;
+                default:
+                    return EquippedHandKind::Other;
+                }
+            }
+            if (auto* armor = skyrim_cast<RE::TESObjectARMO*>(object)) {
+                if (armor->IsShield()) {
+                    return EquippedHandKind::Shield;
+                }
+            }
+            return EquippedHandKind::Other;
+        }
+
+        LookOverrideFacts CollectLookOverrideFacts(
+            RE::PlayerCharacter* player,
+            bool knownBowAim) noexcept
+        {
+            LookOverrideFacts facts{};
+            if (!player) {
+                return facts;
+            }
+
+            facts.bowAim = knownBowAim;
+            facts.magicUse = DetectCastingStatesOnly(player);
+
+            const auto& as1 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState1>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC0, 0xC8);
+            const bool moving =
+                static_cast<bool>(as1.movingBack) ||
+                static_cast<bool>(as1.movingForward) ||
+                static_cast<bool>(as1.movingLeft) ||
+                static_cast<bool>(as1.movingRight);
+            const auto locomotion = ClassifyLookOverrideLocomotion(
+                moving,
+                static_cast<bool>(as1.walking),
+                static_cast<bool>(as1.running),
+                static_cast<bool>(as1.sprinting));
+            facts.sprinting = locomotion.sprinting;
+            facts.running = locomotion.running;
+            facts.walking = locomotion.walking;
+
+            const auto style = ClassifyLookOverrideWeaponStyle(
+                ClassifyEquippedHand(player->GetEquippedObject(false)),
+                ClassifyEquippedHand(player->GetEquippedObject(true)),
+                IsWeaponDrawnRelocated(player));
+            facts.oneHand = style.oneHand;
+            facts.twoHanded = style.twoHanded;
+            facts.dualWielding = style.dualWielding;
+            return facts;
+        }
+
         const char* ClassifyAimState(bool bowOut, bool bowAim, bool bowZoomedIn) noexcept
         {
             if (bowAim && bowZoomedIn) {
@@ -632,7 +708,8 @@ namespace msf
                 state->firstPersonCameraObj->world.rotate.ToEulerAnglesXYZ(sample.worldEuler);
             }
             if (auto* camera = RE::PlayerCamera::GetSingleton()) {
-                sample.playerCameraYaw = camera->yaw;
+                const auto& cam2 = PlayerCameraRuntime2(*camera);
+                sample.playerCameraYaw = cam2.yaw;
                 sample.rotationInputX = camera->rotationInput.x;
                 sample.rotationInputY = camera->rotationInput.y;
             }
@@ -683,7 +760,7 @@ namespace msf
                 player ? GetWeaponStateRelocated(player) : RE::WEAPON_STATE::kSheathed;
             const bool weaponFullySheathed = weaponState == RE::WEAPON_STATE::kSheathed;
             const bool bowOut = rangedWeaponEquipped && IsWeaponDrawnRelocated(player);
-            const bool bowZoomFlag = camera && camera->bowZoomedIn;
+            const bool bowZoomFlag = camera && PlayerCameraRuntime2(*camera).bowZoomedIn;
             const bool effectiveBowZoomedIn =
                 isBowAim && (bowZoomFlag || g_lastRenderedZoomedIn);
             const std::string liveAimState =
@@ -1257,13 +1334,15 @@ namespace msf
             const bool weaponFullySheathed = weaponState == RE::WEAPON_STATE::kSheathed;
             const bool rangedWeaponActive = rangedWeaponEquipped && !weaponFullySheathed;
             const bool bowOut = rangedWeaponEquipped && IsWeaponDrawnRelocated(player);
-            const bool bowZoomFlag = camera && camera->bowZoomedIn;
+            const bool bowZoomFlag = camera && PlayerCameraRuntime2(*camera).bowZoomedIn;
 
             // Frustum / rendered-zoom classification feeds aim state and eagleEye
             // counters even when verbose logging is off. Heavy log emission stays gated.
-            float baseAimFov = camera
-                ? (inThirdPerson ? camera->worldFOV : camera->firstPersonFOV)
-                : 0.0F;
+            float baseAimFov = 0.0F;
+            if (camera) {
+                const auto& cam2 = PlayerCameraRuntime2(*camera);
+                baseAimFov = inThirdPerson ? cam2.worldFOV : cam2.firstPersonFOV;
+            }
             RenderedFovSample rendered = ReadRenderedFov(camera);
             float currentAimFov =
                 rendered.vFovDegrees > 0.0F ? rendered.vFovDegrees : baseAimFov;
@@ -1331,6 +1410,14 @@ namespace msf
             float deltaX = data->lookInputVec.x;
             float deltaY = data->lookInputVec.y;
 
+            const auto overrideFacts = CollectLookOverrideFacts(player, isBowAim);
+            const auto overrideState = ResolveLookOverrideState(overrideFacts);
+            const auto [selectedBowX, selectedBowY] = SelectBowAimAxisMultipliers(
+                reloadedConfig,
+                false,
+                inFirstPerson,
+                inThirdPerson);
+
             float eagleEyeY = 1.0F;
             float bowY = 1.0F;
             if (isBowAim) {
@@ -1351,12 +1438,10 @@ namespace msf
                 // FOV is telemetry only while final yaw and pitch gains are measured.
                 eagleEyeY = 1.0F;
                 // Bow aim X reconstruction + configurable bow multipliers are first-person
-                // only. In third person, leave the engine/camera-mod look deltas alone.
+                // only. In third person, leave the engine/camera-mod look deltas alone
+                // unless a BowAim overlay is opted in for third person.
                 if (ShouldApplyBowAimMousePath(inFirstPerson, true)) {
-                    const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
-                    bowY = CalculateBowAimVerticalMultiplier(
-                        true,
-                        static_cast<float>(reloadedConfig.bowAimMouseYMultiplier));
+                    bowY = CalculateBowAimVerticalMultiplier(true, selectedBowY);
                     // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
                     // scale, then apply bowX relative to that baseline. Falls back to the
                     // engine delta if the scale is not yet seeded.
@@ -1370,8 +1455,12 @@ namespace msf
                         deltaX,
                         deltaY,
                         scaleX,
-                        bowX,
+                        selectedBowX,
                         bowY);
+                } else if (selectedBowX != 1.0F || selectedBowY != 1.0F) {
+                    deltaX *= selectedBowX;
+                    deltaY *= selectedBowY;
+                    bowY = selectedBowY;
                 }
             } else if (bowOut) {
                 if (inThirdPerson) {
@@ -1383,8 +1472,15 @@ namespace msf
                 }
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
+            const auto transformed = g_activeCoordinator->ApplyTransform(
                 deltaX, deltaY, reloadedConfig, false);
+            const auto [outX, outY] = ApplyLookOverrideScale(
+                transformed.first,
+                transformed.second,
+                reloadedConfig,
+                overrideState,
+                inFirstPerson,
+                inThirdPerson);
 
             ++g_lookTransformAppliedCount;
             g_lastOutX = outX;
@@ -1508,11 +1604,20 @@ namespace msf
             float rawX = event->xValue;
             float rawY = event->yValue;
 
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const bool isBowAim = DetectBowAim(player);
+            const auto overrideFacts = CollectLookOverrideFacts(player, isBowAim);
+            const auto overrideState = ResolveLookOverrideState(overrideFacts);
+
             // Gamepad bow multipliers apply in both perspectives. The first-person-only
             // restriction belongs to raw-mouse reconstruction, not thumbstick tuning.
-            if (DetectBowAim(RE::PlayerCharacter::GetSingleton())) {
-                const float bowX = static_cast<float>(reloadedConfig.bowAimGamepadXMultiplier);
-                const float bowY = static_cast<float>(reloadedConfig.bowAimGamepadYMultiplier);
+            // An enabled BowAim overlay replaces fBowAimGamepad* instead of stacking.
+            if (isBowAim) {
+                const auto [bowX, bowY] = SelectBowAimAxisMultipliers(
+                    reloadedConfig,
+                    true,
+                    inFirstPerson,
+                    inThirdPerson);
                 if (bowX != 1.0f) { rawX *= bowX; }
                 if (bowY != 1.0f) { rawY *= bowY; }
             }
@@ -1522,7 +1627,14 @@ namespace msf
                 return;
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig, true);
+            const auto transformed = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig, true);
+            const auto [outX, outY] = ApplyLookOverrideScale(
+                transformed.first,
+                transformed.second,
+                reloadedConfig,
+                overrideState,
+                inFirstPerson,
+                inThirdPerson);
             ++g_thumbstickTransformAppliedCount;
             g_lastStickRawX = rawX;
             g_lastStickRawY = rawY;
@@ -2090,6 +2202,215 @@ namespace msf
             false,
             TimeCompMode::None
         };
+    }
+
+    LookOverrideState ResolveLookOverrideState(const LookOverrideFacts& facts) noexcept
+    {
+        if (facts.bowAim) {
+            return LookOverrideState::BowAim;
+        }
+        if (facts.magicUse) {
+            return LookOverrideState::MagicUse;
+        }
+        if (facts.sprinting) {
+            return LookOverrideState::Sprinting;
+        }
+        if (facts.dualWielding) {
+            return LookOverrideState::DualWielding;
+        }
+        if (facts.twoHanded) {
+            return LookOverrideState::TwoHanded;
+        }
+        if (facts.oneHand) {
+            return LookOverrideState::OneHand;
+        }
+        if (facts.running) {
+            return LookOverrideState::Running;
+        }
+        if (facts.walking) {
+            return LookOverrideState::Walking;
+        }
+        return LookOverrideState::None;
+    }
+
+    const StateLookOverride* GetStateLookOverride(
+        const ConfigValues& config,
+        LookOverrideState state) noexcept
+    {
+        switch (state) {
+        case LookOverrideState::Walking:
+            return &config.walking;
+        case LookOverrideState::Running:
+            return &config.running;
+        case LookOverrideState::Sprinting:
+            return &config.sprinting;
+        case LookOverrideState::BowAim:
+            return &config.bowAim;
+        case LookOverrideState::MagicUse:
+            return &config.magicUse;
+        case LookOverrideState::OneHand:
+            return &config.oneHand;
+        case LookOverrideState::TwoHanded:
+            return &config.twoHanded;
+        case LookOverrideState::DualWielding:
+            return &config.dualWielding;
+        case LookOverrideState::None:
+        default:
+            return nullptr;
+        }
+    }
+
+    bool IsLookOverrideActive(
+        const StateLookOverride& overlay,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (overlay.disabled) {
+            return false;
+        }
+        if (firstPerson == thirdPerson) {
+            return false;
+        }
+        if (firstPerson) {
+            return overlay.applyFirstPerson;
+        }
+        return overlay.applyThirdPerson;
+    }
+
+    std::pair<float, float> SelectBowAimAxisMultipliers(
+        const ConfigValues& config,
+        bool isGamepad,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (IsLookOverrideActive(config.bowAim, firstPerson, thirdPerson)) {
+            return {
+                static_cast<float>(config.bowAim.xSensitivity),
+                static_cast<float>(config.bowAim.ySensitivity)
+            };
+        }
+        if (isGamepad) {
+            return {
+                static_cast<float>(config.bowAimGamepadXMultiplier),
+                static_cast<float>(config.bowAimGamepadYMultiplier)
+            };
+        }
+        if (firstPerson && !thirdPerson) {
+            return {
+                static_cast<float>(config.bowAimMouseXMultiplier),
+                static_cast<float>(config.bowAimMouseYMultiplier)
+            };
+        }
+        return { 1.0F, 1.0F };
+    }
+
+    std::pair<float, float> ApplyLookOverrideScale(
+        float postTransformX,
+        float postTransformY,
+        const ConfigValues& config,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (state == LookOverrideState::None || state == LookOverrideState::BowAim) {
+            return { postTransformX, postTransformY };
+        }
+        const auto* overlay = GetStateLookOverride(config, state);
+        if (!overlay || !IsLookOverrideActive(*overlay, firstPerson, thirdPerson)) {
+            return { postTransformX, postTransformY };
+        }
+        return {
+            postTransformX * static_cast<float>(overlay->xSensitivity),
+            postTransformY * static_cast<float>(overlay->ySensitivity)
+        };
+    }
+
+    std::pair<float, float> ApplyLookComposition(
+        float deltaX,
+        float deltaY,
+        const ConfigValues& config,
+        bool isGamepad,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (state == LookOverrideState::BowAim) {
+            const auto [bowX, bowY] = SelectBowAimAxisMultipliers(
+                config,
+                isGamepad,
+                firstPerson,
+                thirdPerson);
+            deltaX *= bowX;
+            deltaY *= bowY;
+        }
+
+        HookCoordinator coordinator;
+        const auto [transformedX, transformedY] = coordinator.ApplyTransform(
+            deltaX,
+            deltaY,
+            config,
+            isGamepad);
+        return ApplyLookOverrideScale(
+            transformedX,
+            transformedY,
+            config,
+            state,
+            firstPerson,
+            thirdPerson);
+    }
+
+    LookOverrideLocomotion ClassifyLookOverrideLocomotion(
+        bool moving,
+        bool walkingBit,
+        bool runningBit,
+        bool sprintingBit) noexcept
+    {
+        LookOverrideLocomotion locomotion{};
+        locomotion.sprinting = sprintingBit;
+        if (!moving || sprintingBit) {
+            return locomotion;
+        }
+        if (runningBit) {
+            locomotion.running = true;
+            return locomotion;
+        }
+        if (walkingBit) {
+            locomotion.walking = true;
+        }
+        return locomotion;
+    }
+
+    LookOverrideWeaponStyle ClassifyLookOverrideWeaponStyle(
+        EquippedHandKind rightHand,
+        EquippedHandKind leftHand,
+        bool weaponDrawn) noexcept
+    {
+        LookOverrideWeaponStyle style{};
+        if (!weaponDrawn) {
+            return style;
+        }
+        if (rightHand == EquippedHandKind::Bow || leftHand == EquippedHandKind::Bow) {
+            return style;
+        }
+        if (rightHand == EquippedHandKind::TwoHandMelee ||
+            leftHand == EquippedHandKind::TwoHandMelee) {
+            style.twoHanded = true;
+            return style;
+        }
+        const bool rightOneHand = rightHand == EquippedHandKind::OneHandMelee;
+        const bool leftOneHand = leftHand == EquippedHandKind::OneHandMelee;
+        if (rightOneHand && leftOneHand) {
+            style.dualWielding = true;
+            return style;
+        }
+        const auto otherIsEmptyOrShield = [](EquippedHandKind hand) noexcept {
+            return hand == EquippedHandKind::Empty || hand == EquippedHandKind::Shield;
+        };
+        if ((rightOneHand && otherIsEmptyOrShield(leftHand)) ||
+            (leftOneHand && otherIsEmptyOrShield(rightHand))) {
+            style.oneHand = true;
+        }
+        return style;
     }
 
     std::pair<float, float> ApplyBowAimMouseDeltas(

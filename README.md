@@ -23,8 +23,8 @@ CMC does not replace camera mods, apply automatic FOV-based input scaling, or no
 
 ## Runtime requirements
 
-- SKSE64 matching your game runtime
-- Address Library for SKSE Plugins
+- SKSE64 matching your game runtime (SKSE 2.3.1 on Skyrim 1.7.99 / 1.7.104; SKSE 2.2.6 remains the 1.6.1170 target)
+- Address Library for SKSE Plugins (1.7.99+ needs the format-5 `versionlib-1-7-*.bin` files)
 - SKSE Menu Framework (optional)
 
 ## Build
@@ -55,7 +55,8 @@ The codebase produces one CommonLibSSE-NG multi-runtime DLL. Runtime validation 
 
 - `1.5.97` (SE)
 - `1.6.640` (AE)
-- latest `1.6.x` Steam
+- `1.6.1170` (Steam AE)
+- `1.7.99` / `1.7.104` (Steam AE 1.7; SKSE 2.3.1 + Address Library v5)
 - latest supported GOG build
 - VR
 

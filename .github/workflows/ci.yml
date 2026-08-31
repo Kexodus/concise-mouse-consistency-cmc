@@ -40,7 +40,7 @@ jobs:
           path: |
             .vcpkg
             build-commonlib/vcpkg_installed
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'scripts/bootstrap-vcpkg.ps1') }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'scripts/bootstrap-vcpkg.ps1', 'cmake/vcpkg-overlay-ports/**') }}
       - name: Bootstrap pinned vcpkg
         shell: pwsh
         run: ./scripts/bootstrap-vcpkg.ps1

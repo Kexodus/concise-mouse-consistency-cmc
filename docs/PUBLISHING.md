@@ -30,7 +30,8 @@ Validate in-game startup and input behavior on targeted runtimes:
 
 - `1.5.97` (SE)
 - `1.6.640` (AE)
-- latest `1.6.x` Steam
+- `1.6.1170` (Steam AE / SKSE 2.2.6)
+- `1.7.99` / `1.7.104` (Steam AE / SKSE 2.3.1 + Address Library v5)
 - latest supported GOG build
 - VR if the release advertises VR support
 
