@@ -10,8 +10,12 @@
 #include <string>
 
 #if MSF_USE_COMMONLIBSSE
+#include <SKSE/SKSE.h>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
 #endif
 #include <Windows.h>
 #endif
@@ -35,6 +39,23 @@ namespace
                          " reason=" + policy.reason);
         }
     }
+
+    void InitializeMenuFrameworkBridge()
+    {
+        if (!g_menuFrameworkBridge.Initialize()) {
+            msf::LogWarn("Menu framework bridge unavailable. INI-based config remains available.");
+        }
+    }
+
+#if MSF_USE_COMMONLIBSSE
+    void OnSkseMessage(SKSE::MessagingInterface::Message* message)
+    {
+        if (!message || message->type != SKSE::MessagingInterface::kPostLoad) {
+            return;
+        }
+        InitializeMenuFrameworkBridge();
+    }
+#endif
 
     void LogBuildIdentity()
     {
@@ -111,9 +132,17 @@ namespace msf
             return false;
         }
 
-        if (!g_menuFrameworkBridge.Initialize()) {
-            LogWarn("Menu framework bridge unavailable. INI-based config remains available.");
+#if MSF_USE_COMMONLIBSSE
+        const auto* messaging = SKSE::GetMessagingInterface();
+        if (messaging && messaging->RegisterListener(OnSkseMessage)) {
+            LogInfo("Deferred SKSE Menu Framework registration until PostLoad.");
+        } else {
+            LogWarn("SKSE messaging unavailable; attempting Menu Framework registration during Load.");
+            InitializeMenuFrameworkBridge();
         }
+#else
+        InitializeMenuFrameworkBridge();
+#endif
 
         LogInfo("Initialization complete.");
         return true;

@@ -265,10 +265,10 @@ namespace msf
 
         bool ResolveFrameworkApi()
         {
-            HMODULE frameworkModule = ::GetModuleHandleA("SKSEMenuFramework.dll");
-            if (!frameworkModule) {
-                frameworkModule = ::LoadLibraryA("Data\\SKSE\\Plugins\\SKSEMenuFramework.dll");
-            }
+            // Only attach to a copy SKSE already loaded. LoadLibraryA during our
+            // SKSEPlugin_Load runs Menu Framework constructors before its own
+            // SKSEPlugin_Load / trampoline / D3D hooks, which can abort later.
+            const HMODULE frameworkModule = ::GetModuleHandleA("SKSEMenuFramework.dll");
             if (!frameworkModule) {
                 return false;
             }

@@ -295,6 +295,19 @@ namespace msf
         FirstPersonStateUpdateFn g_originalFirstPersonStateUpdate{ nullptr };
         ThirdPersonHandleLookInputFn g_originalThirdPersonHandleLookInput{ nullptr };
         HookCoordinator* g_activeCoordinator{ nullptr };
+        std::atomic<bool> g_loggedFirstLookMouse{ false };
+        std::atomic<bool> g_loggedFirstLookThumb{ false };
+        std::atomic<bool> g_loggedFirstPlayerYaw{ false };
+        std::atomic<bool> g_loggedFirstFpUpdate{ false };
+        std::atomic<bool> g_loggedFirstTpLook{ false };
+
+        void LogHookFirstCall(const char* name, std::atomic<bool>& flag) noexcept
+        {
+            if (!flag.exchange(true, std::memory_order_relaxed)) {
+                LogInfo(std::string("Hook first call: ") + name);
+            }
+        }
+
         std::uint64_t g_lookHookCallsTotal{ 0 };
         std::uint64_t g_lookHookCallsFirstPerson{ 0 };
         std::uint64_t g_lookHookCallsThirdPerson{ 0 };
@@ -737,6 +750,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("FirstPersonState::Update", g_loggedFirstFpUpdate);
             const auto config = ConfigManager::Get().GetSnapshot();
             const auto before = CaptureFirstPersonOrientation(state, config.verboseLogging);
             g_originalFirstPersonStateUpdate(state, nextState);
@@ -990,6 +1004,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("PlayerCharacter::ModifyMovementData", g_loggedFirstPlayerYaw);
             auto* controls = RE::PlayerControls::GetSingleton();
             auto* camera = RE::PlayerCamera::GetSingleton();
             const auto config = ConfigManager::Get().GetSnapshot();
@@ -1232,6 +1247,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("LookHandler::ProcessMouseMove", g_loggedFirstLookMouse);
             if (!event || !g_activeCoordinator) {
                 g_originalProcessMouseMove(handler, event, data);
                 return;
@@ -1557,6 +1573,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("LookHandler::ProcessThumbstick", g_loggedFirstLookThumb);
             if (!event || !g_activeCoordinator) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
@@ -1663,6 +1680,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("ThirdPersonState::HandleLookInput", g_loggedFirstTpLook);
             const float beforePitch = state ? state->freeRotation.y : 0.0F;
             g_originalThirdPersonHandleLookInput(state, input);
 
@@ -2653,7 +2671,17 @@ namespace msf
 
     bool ShouldApplyBowAimMousePath(bool inFirstPerson, bool bowAiming) noexcept
     {
-        return bowAiming && inFirstPerson;
+        return inFirstPerson && bowAiming;
+    }
+
+    std::uint32_t LookHandlerProcessThumbstickVtableIndex(bool isSkyrim1799OrNewer) noexcept
+    {
+        return isSkyrim1799OrNewer ? 4U : 2U;
+    }
+
+    std::uint32_t LookHandlerProcessMouseMoveVtableIndex(bool isSkyrim1799OrNewer) noexcept
+    {
+        return isSkyrim1799OrNewer ? 5U : 3U;
     }
 
     bool ShouldEmitSampledLog(
@@ -2672,13 +2700,20 @@ namespace msf
     {
 #if MSF_USE_COMMONLIBSSE
         REL::Relocation<std::uintptr_t> lookHandlerVTable{ RE::VTABLE_LookHandler[0] };
+#if defined(ENABLE_SKYRIM_AE)
+        const bool ae1799 = REL::Module::IsAtLeast(SKSE::RUNTIME_SSE_1_7_99);
+#else
+        const bool ae1799 = false;
+#endif
+        const auto thumbstickIndex = LookHandlerProcessThumbstickVtableIndex(ae1799);
+        const auto mouseIndex = LookHandlerProcessMouseMoveVtableIndex(ae1799);
         if (!g_originalProcessThumbstick) {
             g_originalProcessThumbstick = reinterpret_cast<ProcessThumbstickFn>(
-                lookHandlerVTable.write_vfunc(2, ProcessThumbstickHook));
+                lookHandlerVTable.write_vfunc(thumbstickIndex, ProcessThumbstickHook));
         }
         if (!g_originalProcessMouseMove) {
             g_originalProcessMouseMove = reinterpret_cast<ProcessMouseMoveFn>(
-                lookHandlerVTable.write_vfunc(3, ProcessMouseMoveHook));
+                lookHandlerVTable.write_vfunc(mouseIndex, ProcessMouseMoveHook));
         }
 
         if (!g_originalProcessThumbstick || !g_originalProcessMouseMove) {
@@ -2761,11 +2796,20 @@ namespace msf
         }
 
         REL::Relocation<std::uintptr_t> lookHandlerVTable{ RE::VTABLE_LookHandler[0] };
+#if defined(ENABLE_SKYRIM_AE)
+        const bool ae1799 = REL::Module::IsAtLeast(SKSE::RUNTIME_SSE_1_7_99);
+#else
+        const bool ae1799 = false;
+#endif
+        const auto thumbstickIndex = LookHandlerProcessThumbstickVtableIndex(ae1799);
+        const auto mouseIndex = LookHandlerProcessMouseMoveVtableIndex(ae1799);
         if (g_originalProcessThumbstick) {
-            lookHandlerVTable.write_vfunc(2, reinterpret_cast<std::uintptr_t>(g_originalProcessThumbstick));
+            lookHandlerVTable.write_vfunc(
+                thumbstickIndex, reinterpret_cast<std::uintptr_t>(g_originalProcessThumbstick));
         }
         if (g_originalProcessMouseMove) {
-            lookHandlerVTable.write_vfunc(3, reinterpret_cast<std::uintptr_t>(g_originalProcessMouseMove));
+            lookHandlerVTable.write_vfunc(
+                mouseIndex, reinterpret_cast<std::uintptr_t>(g_originalProcessMouseMove));
         }
         g_originalProcessThumbstick = nullptr;
         g_originalProcessMouseMove = nullptr;

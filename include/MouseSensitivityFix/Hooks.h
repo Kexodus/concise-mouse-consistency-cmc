@@ -269,6 +269,11 @@ namespace msf
     // (mount / furniture / etc. must not use the FP bow path).
     bool ShouldApplyBowAimMousePath(bool inFirstPerson, bool bowAiming) noexcept;
 
+    // NG v7 LookHandler inserts ProcessMotionGesture/ProcessSixaxis at slots 2/3 on
+    // 1.7.99+. 1.6.x keeps ProcessThumbstick/ProcessMouseMove at 2/3.
+    std::uint32_t LookHandlerProcessThumbstickVtableIndex(bool isSkyrim1799OrNewer) noexcept;
+    std::uint32_t LookHandlerProcessMouseMoveVtableIndex(bool isSkyrim1799OrNewer) noexcept;
+
     // One-winner look overlay. Priority: bow > magic > sprint > dual > 2H > 1H > run > walk.
     enum class LookOverrideState : std::uint8_t
     {

@@ -5,6 +5,7 @@
 ### Fixed
 
 - SKSE can load CMC on 1.6.x again. The 0.54b NG v7 `x64-windows` build dynamically imported `spdlog.dll` / `fmt.dll`, which were never packaged, so `LoadLibrary` failed with Windows 126. The plugin-release preset now uses `x64-windows-static-md` (static libs, dynamic CRT), matching main 0.53.2. Look behavior and 0.54b overlays are unchanged.
+- Boot CTD on Steam 1.6.1170 after CMC init: do not `LoadLibrary` SKSE Menu Framework during `SKSEPlugin_Load`. Register overlay pages at PostLoad, after SKSE has initialized that plugin. LookHandler vtable slots now follow NG v7's 1.7.99+ shift (no-op on 1.6.x).
 
 ## [0.54b] - 2026-08-31
 

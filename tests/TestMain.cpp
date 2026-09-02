@@ -2016,6 +2016,14 @@ namespace
         CHECK(Near(composed.first, 3.0F));
         CHECK(Near(composed.second, -2.0F));
     }
+
+    void TestLookHandlerVtableSlotsShiftOn1799()
+    {
+        CHECK(msf::LookHandlerProcessThumbstickVtableIndex(false) == 2U);
+        CHECK(msf::LookHandlerProcessMouseMoveVtableIndex(false) == 3U);
+        CHECK(msf::LookHandlerProcessThumbstickVtableIndex(true) == 4U);
+        CHECK(msf::LookHandlerProcessMouseMoveVtableIndex(true) == 5U);
+    }
 }
 
 int main()
@@ -2065,6 +2073,7 @@ int main()
         { "bow overlay replaces legacy fBowAim", TestBowOverlayReplacesLegacyBowAimMultipliers },
         { "bow overlay disabled leaves fBowAim", TestBowOverlayDisabledLeavesLegacyBowAim },
         { "look composition ignores FOV", TestLookCompositionIgnoresFov },
+        { "LookHandler vtable slots shift on 1.7.99", TestLookHandlerVtableSlotsShiftOn1799 },
     };
 
     int failures = 0;

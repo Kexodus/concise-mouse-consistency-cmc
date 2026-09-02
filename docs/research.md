@@ -6,6 +6,9 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Menu Framework pages at PostLoad via GetModuleHandle (2026-09-02)
+Do not `LoadLibraryA` `SKSEMenuFramework.dll` during `SKSEPlugin_Load`. Register SKSE's PostLoad listener, then `GetModuleHandle` a DLL SKSE already loaded. Steam 1.6.1170 / SKSE 2.2.8 / IC+SmoothCam playtest: `BuildIdentity` `bytes=717312`, `Deferred SKSE Menu Framework registration until PostLoad` at 12:49:13, `UI Bridge initialized` at 12:49:14 (SKSE message type 0 to handle 139), then D3D/ImGui at 12:49:39 with no `_purecall` abort. In-world: `Hook first call:` `FirstPersonState::Update`, `PlayerCharacter::ModifyMovementData`, `LookHandler::ProcessMouseMove` (1.6 vtable 2/3). No CrashLogger report. 1.7.99+ LookHandler 4/5 still untested. Compat stayed `mode=0` (keep TP smoothing removal).
+
 ### Orphan half-rate restore + freelook yaw EMA poison reject (2026-08-12)
 Half-rate policy is measurement-driven: exclusive `FP && looking` (no sprint/bow requirement; both-true person flags rejected). Restore still needs `observedScale∈[0.48,0.52]`; orphan cast/etc. also needs two consecutive in-band hits while policy-eligible, while sprint/bow hints may restore on the first hit. In-band streak resets when policy-ineligible. Freelook yaw EMA rejects half-scale samples and casting frames so `freelookYawPerLook` is not poisoned to ~0.5×. Casting/staff scans run only for verbose telemetry + EMA — not on the quiet restore hot path; restore stays measurement-driven (orphan band), not casting-triggered.
 
@@ -100,6 +103,11 @@ IC reads these passively via its own `IsAiming()` helper. Any bow detection fail
 ---
 
 ## Doesn't Work
+
+### Registering Menu Framework pages during `SKSEPlugin_Load` / `LoadLibraryA` (2026-09-02)
+Registering multiple SKSE Menu Framework pages during `SKSEPlugin_Load` via `LoadLibraryA` before Menu Framework is ready causes a `_purecall` / `FAST_FAIL` abort ~17s after D3D on Steam 1.6.1170 / SKSE 2.2.8. Two CTDs (12:20:26 and 12:21:44) with CMC enabled (`BuildIdentity` `0.54b` `bytes=715776`); unchecking CMC reached the main menu. CMC log was already clean (`Initialization complete`, UI Bridge registered during Load). WER: `ucrtbase.dll` `0xc0000409` `ExceptionInformation=7`. Minidumps put the crash thread on `_purecall` → `abort` in `SkyrimSE.exe` (no CMC frames). CrashLogger writes no report for fail-fast abort.
+
+Not Windows 126, not Address Library v5 rejection, not a hook-install failure. Production fix is PostLoad + `GetModuleHandle` only — see Works. Do not restore Load-time `LoadLibraryA` page registration.
 
 ### NG v7 + default `x64-windows` dynamic vcpkg triplet (2026-08-31)
 alandtse CommonLibSSE-NG `v7.0.0` PUBLIC-links vcpkg spdlog/fmt. Building the plugin with `VCPKG_TARGET_TRIPLET=x64-windows` produces PE imports of `spdlog.dll` and `fmt.dll`. Those DLLs are not packaged or deployed, so SKSE `LoadLibrary` fails with Windows 126 (`ERROR_MOD_NOT_FOUND`) — logged as `couldn't load plugin 126`. Confirmed on Skyrim 1.6.1170 / SKSE 2.2.8: plugin alone → 126; plugin plus those two DLLs beside it → success. Address Library v5 metadata is not the 1.6 failure (SKSE 2.2.6/2.2.8 ignore unknown `versionIndependenceEx` bits). 0.1.5-beta had no spdlog/fmt PE imports. **Fix:** plugin preset `x64-windows-static-md` (static libs, dynamic CRT). Do not ship spdlog/fmt next to the plugin, and do not use fully static `x64-windows-static` (that static-links the CRT, which is wrong for SKSE plugins).
