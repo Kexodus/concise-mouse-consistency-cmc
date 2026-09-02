@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed `0.53b` playtest | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. See playtest evidence below. |
+| `1.6.1170` | Steam AE | Passed `0.53b` playtest; NG v7 needs static-md to load | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. Main `0.53.1` / beta `0.54b` NG v7 `x64-windows` builds failed SKSE `LoadLibrary` with Windows 126 (`spdlog.dll`/`fmt.dll` PE imports). Main `0.53.2` static-md rebuild loaded on SKSE 2.2.8 (handle 139, no error 126). Beta now uses the same `x64-windows-static-md` preset; reload this 0.54b DLL on 1.6.1170 to confirm. See playtest evidence below. |
 | `1.7.99` | Steam AE | Pending | Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-99-0.bin`). Not playtested. |
 | `1.7.104` | Steam AE | Pending | Latest Steam AE. Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-104-0.bin`). Not playtested. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
@@ -90,6 +90,14 @@ CPack generated `Concise-Mouse-Consistency-0.53b.zip` with only `Data/SKSE/Plugi
 
 - DLL: 543,744 bytes, SHA-256 `910B83FBB2AAFB524B839D688DE07938A2155B942712697832E2DF5DB3EA0A63`
 - ZIP: 224,799 bytes, SHA-256 `F2B89279A5815EECA1E08F7954BCA5F98748FED0BAFBC58283A81B40CB812402`
+
+### 2026-08-31 NG v7 1.6 load (Steam `1.6.1170` / SKSE 2.2.8)
+
+The NG v7 `x64-windows` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 126 (`spdlog.dll` / `fmt.dll` PE imports). Main `0.53.2` switched the plugin preset to `x64-windows-static-md` and loaded cleanly:
+
+- SKSE 2.2.8 runtime `01064920` (1.6.1170). `plugin MouseSensitivityFix.dll ... loaded correctly (handle 139)`. No `couldn't load plugin 126` for CMC (`plugin 126` in the log is SKSE messaging another plugin's handle).
+- `dumpbin /dependents` listed CRT/system DLLs only — no `spdlog.dll` / `fmt.dll`.
+- That was a load/smoke confirmation of the static-md fix, not a replay of the 2026-08-14 gameplay matrix. Beta now uses the same preset; this 0.54b DLL still needs a 1.6.1170 reload to confirm.
 
 ## Evidence required for a pass
 

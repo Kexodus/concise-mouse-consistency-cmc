@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- SKSE can load CMC on 1.6.x again. The 0.54b NG v7 `x64-windows` build dynamically imported `spdlog.dll` / `fmt.dll`, which were never packaged, so `LoadLibrary` failed with Windows 126. The plugin-release preset now uses `x64-windows-static-md` (static libs, dynamic CRT), matching main 0.53.2. Look behavior and 0.54b overlays are unchanged.
+
 ## [0.54b] - 2026-08-31
 
 ### Added

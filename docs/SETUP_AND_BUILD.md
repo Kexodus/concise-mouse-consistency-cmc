@@ -34,7 +34,7 @@ Outputs:
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
 - ZIP: `build-commonlib/Concise-Mouse-Consistency-<version>.zip`
 
-The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies. `commonlibsse-ng` is resolved from `cmake/vcpkg-overlay-ports`, not the old colorglass registry. The first plugin configure compiles CommonLibSSE-NG from source and is slow.
+The bootstrap script clones vcpkg into the ignored `.vcpkg/` directory, checks out the pinned 40-character baseline, and disables vcpkg metrics. Re-running it verifies the same baseline instead of silently upgrading dependencies. `commonlibsse-ng` is resolved from `cmake/vcpkg-overlay-ports`, not the old colorglass registry. The plugin-release preset uses `VCPKG_TARGET_TRIPLET=x64-windows-static-md` so the DLL does not PE-import `spdlog.dll`/`fmt.dll` (SKSE 1.6 LoadLibrary 126). Do not revert to `x64-windows`. The first plugin configure compiles CommonLibSSE-NG from source and is slow.
 
 ## Dependency-free tests
 
