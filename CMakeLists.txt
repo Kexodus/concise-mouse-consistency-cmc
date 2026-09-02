@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MouseSensitivityFix
-    VERSION 0.54.0
+    VERSION 0.54.1
     LANGUAGES CXX
 )
 
 # CMake VERSION is numeric; ZIP name and BuildIdentity use this public identity.
-set(MSF_PLUGIN_VERSION_STRING "0.54b")
+set(MSF_PLUGIN_VERSION_STRING "0.54b.1")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
