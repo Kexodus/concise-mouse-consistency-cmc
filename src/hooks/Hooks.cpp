@@ -386,6 +386,7 @@ namespace msf
 
         std::mutex g_mouseTelemetryLock;
         MouseTelemetryWindow g_mouseTelemetryWindow;
+        MousePitchInputState g_mousePitchInputState;
 
         std::uint64_t g_thumbstickHookCallsTotal{ 0 };
         std::uint64_t g_thumbstickTransformAppliedCount{ 0 };
@@ -757,10 +758,12 @@ namespace msf
             const auto after = CaptureFirstPersonOrientation(state, config.verboseLogging);
 
             MouseTelemetryWindow input{};
+            bool mouseOwnsPitch = false;
             {
                 std::scoped_lock lock(g_mouseTelemetryLock);
                 input = std::move(g_mouseTelemetryWindow);
                 g_mouseTelemetryWindow = {};
+                mouseOwnsPitch = g_mousePitchInputState.ConsumeFrame();
             }
             ++g_firstPersonTelemetryFrame;
             auto* player = RE::PlayerCharacter::GetSingleton();
@@ -812,6 +815,7 @@ namespace msf
             // Sprint / casting exclude calibration only — freelook still must not normalize.
             const bool castingBlocksPitchBaseline = DetectCastingStatesOnly(player);
             const bool trueFreelookBaseline =
+                mouseOwnsPitch &&
                 hasInputWindow &&
                 stableState &&
                 IsTrueFreelookPitchBaselineEligible(
@@ -852,6 +856,7 @@ namespace msf
                 true,
                 g_dilatedYawBroughtToWallClock.load(std::memory_order_relaxed));
             const bool normalizationEligible =
+                mouseOwnsPitch &&
                 config.enabled &&
                 config.enableFirstPersonHook &&
                 !menuBlocksPitch &&
@@ -870,6 +875,7 @@ namespace msf
                 normalizationEligible);
 
             if (trueFreelookEnvironment ||
+                !mouseOwnsPitch ||
                 !config.enabled ||
                 !config.enableFirstPersonHook ||
                 menuBlocksPitch ||
@@ -940,6 +946,7 @@ namespace msf
                     " normalizedTargetPitchDelta=" + std::to_string(normalizedTargetPitchDelta) +
                     " freelookPitchPerLook=" + std::to_string(g_freelookPitchPerLook) +
                     " pitchNormalized=" + std::to_string(pitchNormalized ? 1 : 0) +
+                    " mouseOwnsPitch=" + std::to_string(mouseOwnsPitch ? 1 : 0) +
                     " localEulerDelta=(" + std::to_string(localXDelta) + "," +
                         std::to_string(localYDelta) + "," + std::to_string(localZDelta) + ")" +
                     " worldEulerDelta=(" + std::to_string(worldXDelta) + "," +
@@ -992,6 +999,7 @@ namespace msf
         {
             std::scoped_lock lock(g_mouseTelemetryLock);
             g_mouseTelemetryWindow = {};
+            g_mousePitchInputState = {};
         }
 
         void PlayerModifyMovementDataHook(
@@ -1524,6 +1532,7 @@ namespace msf
             // first-person normalizer after a camera transition.
             if (inFirstPerson) {
                 std::scoped_lock lock(g_mouseTelemetryLock);
+                g_mousePitchInputState.OnMouse();
                 auto& window = g_mouseTelemetryWindow;
                 const auto eventId = ++g_mouseTelemetryEventId;
                 if (window.eventCount == 0) {
@@ -1574,6 +1583,13 @@ namespace msf
             }
 
             LogHookFirstCall("LookHandler::ProcessThumbstick", g_loggedFirstLookThumb);
+            // Observe native stick look even when CMC's gamepad transform is off.
+            // Left-stick movement must not relinquish mouse pitch ownership.
+            if (event && event->IsRight()) {
+                std::scoped_lock lock(g_mouseTelemetryLock);
+                g_mousePitchInputState.OnRightStick();
+                g_mouseTelemetryWindow = {};
+            }
             if (!event || !g_activeCoordinator) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
@@ -2896,6 +2912,7 @@ namespace msf
         {
             std::scoped_lock lock(g_mouseTelemetryLock);
             g_mouseTelemetryWindow = {};
+            g_mousePitchInputState = {};
         }
         LogInfo("Installed FirstPersonState::Update final-axis telemetry hook.");
         return true;

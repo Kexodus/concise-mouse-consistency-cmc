@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- First-person mouse pitch correction releases control when right-stick look is used, preventing it from holding the camera's pitch during controller bow use. Mixed mouse/controller frames no longer calibrate the mouse pitch baseline. Regression-tested; in-game validation of the reported trackpad-click snap remains pending.
+
 ## [0.54b.1] - 2026-09-02
 
 ### Fixed

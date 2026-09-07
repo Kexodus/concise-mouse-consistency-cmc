@@ -12,6 +12,26 @@
 
 namespace msf
 {
+    // Keep mouse-only pitch correction across idle frames, but release it on
+    // controller look and exclude mixed-device frames from calibration.
+    struct MousePitchInputState
+    {
+        void OnMouse() noexcept { mouseOwnsPitch = true; }
+        void OnRightStick() noexcept
+        {
+            mouseOwnsPitch = false;
+            rightStickThisFrame = true;
+        }
+        bool ConsumeFrame() noexcept
+        {
+            const bool eligible = mouseOwnsPitch && !rightStickThisFrame;
+            rightStickThisFrame = false;
+            return eligible;
+        }
+        bool mouseOwnsPitch{ false };
+        bool rightStickThisFrame{ false };
+    };
+
     enum class HookRegistrationPoint
     {
         InputLook,

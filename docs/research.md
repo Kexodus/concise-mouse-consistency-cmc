@@ -194,6 +194,22 @@ IC keeps the camera in `kFirstPerson` state throughout bow drawing/aiming — it
 
 ## Planned (not playtested)
 
+### Mouse pitch ownership on controller handoff (2026-09-06)
+The 0.54b.1 Steam Controller playtest (Auto Input Switch 1.3.1, IC + SmoothCam)
+recorded right-stick transforms while first-person bow pitch normalization had
+`events=0`. At 23:06:47.548 it discarded `engineTargetPitchDelta=8.368969` and held
+the old target (`normalizedTargetPitchDelta=0`, `pitchNormalized=1`). Mouse-only
+normalization lacked input ownership and could override native controller look.
+
+Local fix releases ownership on right-stick events, even when gamepad transforms
+are disabled; left-stick movement does not release it. Mixed-device frames cannot
+calibrate or normalize mouse pitch. Mouse idle frames retain the existing hold.
+Regression replay fails with handoff disabled and preserves the recorded engine
+delta with handoff enabled. In-game fix validation is pending. The reported
+E-mapped trackpad-click snap is not yet conclusively attributed to this defect;
+the sampled log has no keyboard-event correlation. Diagnostic output now includes
+`mouseOwnsPitch`.
+
 ### Per-state SKSE Menu/INI overrides (2026-08-14)
 **Implemented in code / unit-tested. Not playtested.** Opt-in per-state X/Y after `ApplyTransform` (global × device). All eight overlays ship `b<State>Disabled=true`. Leave them checked to keep 0.53b feel. Public version is `0.54b`; overlays remain unplaytested.
 

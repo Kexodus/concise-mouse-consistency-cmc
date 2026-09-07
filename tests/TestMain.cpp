@@ -2024,11 +2024,36 @@ namespace
         CHECK(msf::LookHandlerProcessThumbstickVtableIndex(true) == 4U);
         CHECK(msf::LookHandlerProcessMouseMoveVtableIndex(true) == 5U);
     }
+
+    void TestMousePitchReleasesControllerLook()
+    {
+        msf::MousePitchInputState state;
+        CHECK(!state.ConsumeFrame());
+        state.OnMouse();
+        CHECK(state.ConsumeFrame());
+        CHECK(state.ConsumeFrame()); // Mouse idle holds its corrected target.
+        state.OnRightStick();
+        const bool eligible = state.ConsumeFrame();
+        // Recorded playtest: no mouse event, native controller pitch +8.368969.
+        CHECK(Near(msf::NormalizePitchTargetDelta(0.0F, 8.368969F, 0.077167F, eligible), 8.368969F));
+        CHECK(!state.ConsumeFrame()); // Do not reclaim pitch on controller idle.
+        state.OnRightStick();
+        state.OnMouse();
+        CHECK(!state.ConsumeFrame()); // Mixed frame cannot seed a mouse gain.
+        CHECK(state.ConsumeFrame());
+        state.OnMouse();
+        state.OnRightStick();
+        CHECK(!state.ConsumeFrame());
+        CHECK(!state.ConsumeFrame());
+        state.OnMouse();
+        CHECK(state.ConsumeFrame());
+    }
 }
 
 int main()
 {
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
+        { "mouse pitch releases controller look", TestMousePitchReleasesControllerLook },
         { "transform and runtime gates", TestTransformAndRuntimeGates },
         { "gamepad transform defaults to axis parity", TestGamepadTransformDefaultsToAxisParity },
         { "bow aim mouse deltas use sampled X and current engine Y", TestBowAimMouseDeltasUseSampledXAndCurrentEngineY },
