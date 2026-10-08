@@ -112,6 +112,13 @@ The NG v7 `0.53.1` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 12
 - Three CrashLogger reports that day (14:58, 15:00, 15:19) were `std::filesystem::filesystem_error` thrown from `po3_DialogueHistory.dll` `OnInit`; CMC appears only in the module list.
 - Right-stick release of mouse pitch ownership still needs a dedicated in-game check.
 
+### 2026-10-08 `0.54` release candidate package
+
+- Beta merged with main (0.53.1 / 0.53.2 / unit-test mtime fix). Plugin build and unit tests passed.
+- DLL: 719,360 bytes, SHA-256 `34684FB358A5E2A44D7B297EB152809A942C65DF0F8509571DC5FDD09F77B061`. No `spdlog.dll` / `fmt.dll` imports.
+- ZIP `Concise-Mouse-Consistency-0.54.zip`: 317,648 bytes, SHA-256 `4278802CF94CB3F103A919ED10A8B0AB31D40CF2C6D8E0F2249B8A2FCBB94BEC`. Contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
+- In-game check of right-stick pitch handoff with this DLL is pending before publishing.
+
 ## Evidence required for a pass
 
 For each runtime, record:
