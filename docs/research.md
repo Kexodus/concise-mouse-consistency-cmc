@@ -194,6 +194,24 @@ IC keeps the camera in `kFirstPerson` state throughout bow drawing/aiming — it
 
 ## Planned (not playtested)
 
+### Steam Controller E-click freelook snap: Auto Input Switch automatic mode (2026-09-06)
+The reported trigger combines left-stick movement, trackpad mouse movement, and
+keyboard E from a trackpad click. The winning Auto Input Switch 1.3.1 INI used
+`iPreferredPlatform=-1`. Its event sink changes mode on keyboard, mouse, and
+gamepad events; mouse-vector conversion depends on the mode at that point in
+the event list. A preceding E event can skip that conversion. Native dispatch
+ordering has not been verified, so that detailed mechanism remains an inference.
+The [mouse fork author's documentation](https://www.nexusmods.com/skyrimspecialedition/mods/166519)
+explicitly describes snapping with simultaneous analog stick, mouse, and keyboard
+and recommends fixed platform selection. See also the
+[original hyper-sensitive-mouse correction](https://github.com/Exit-9B/AutoInputSwitch/commit/617eac0dece996448a0a9539eb824702122fd2fe).
+
+Applied local configuration remedy: back up the active AIS INI and change to
+`iPreferredPlatform=0` for trackpad mouse look. This bypasses the auto-switch event
+sink while keeping gamepad device hooks, but uses keyboard/mouse UI hints and
+disables rumble. Restart and user playtest are pending. CMC verbose logging was
+restored to false. No additional CMC input patch was made for this finding.
+
 ### Mouse pitch ownership on controller handoff (2026-09-06)
 The 0.54b.1 Steam Controller playtest (Auto Input Switch 1.3.1, IC + SmoothCam)
 recorded right-stick transforms while first-person bow pitch normalization had
