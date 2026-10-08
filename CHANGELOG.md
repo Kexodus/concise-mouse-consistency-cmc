@@ -2,9 +2,17 @@
 
 ## [Unreleased]
 
+## [0.54] - 2026-10-08
+
+Promotes the 0.54b beta line to the public release. Includes everything in 0.54b and 0.54b.1 below.
+
 ### Fixed
 
-- First-person mouse pitch correction releases control when right-stick look is used, preventing it from holding the camera's pitch during controller bow use. Mixed mouse/controller frames no longer calibrate the mouse pitch baseline. Regression-tested; in-game validation of the reported trackpad-click snap remains pending.
+- First-person mouse pitch correction releases control when right-stick look is used, preventing it from holding the camera's pitch during controller bow use. Mixed mouse/controller frames no longer calibrate the mouse pitch baseline.
+
+### Changed
+
+- Release ZIP contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini` (carried over from 0.53.2).
 
 ## [0.54b.1] - 2026-09-02
 
@@ -36,10 +44,32 @@
 - Resolver, composition, person-gate, priority, bow replace-not-stack, `FALSE` opt-in, and dist-INI Disabled defaults.
 - Documented 1.7.99 / 1.7.104 as validation targets (in-game playtest still pending). SKSE 2.3.1 and Address Library `versionlib-1-7-*.bin` are required on those runtimes.
 
-## [0.53b] - 2026-08-14
+## [0.53.2] - 2026-08-31
+
+### Fixed
+
+- SKSE can load CMC on 1.6.1170 / SKSE 2.2.8 again. The 0.53.1 NG v7 build dynamically imported `spdlog.dll` / `fmt.dll`, which were never packaged, so `LoadLibrary` failed with Windows 126. The plugin now uses the `x64-windows-static-md` vcpkg triplet (static libs, dynamic CRT) so those imports are gone. Look behavior is unchanged.
 
 ### Changed
 
+- Release ZIP contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`. `README.md` and `CHANGELOG.md` stay in the git repo; GitHub release notes still quote this changelog in the release body.
+
+## [0.53.1] - 2026-08-31
+
+### Changed
+
+- 1.7 loadability / Address Library v5 compat build of 0.53 gameplay. One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG / VR. Look behavior is unchanged from 0.53.
+- CommonLibSSE-NG is consumed from an overlay port of [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0` (`8b032fa`) instead of the stale colorglass / CharmedBaryon 3.5.3 pin.
+
+### Tests / Docs
+
+- Documented 1.7.99 / 1.7.104 as validation targets (in-game playtest still pending). SKSE 2.3.1 and Address Library `versionlib-1-7-*.bin` are required on those runtimes.
+
+## [0.53] - 2026-08-14
+
+### Changed
+
+- Promoted the playtested 0.53b Nexus beta to public 0.53.
 - Restored first-person mouse bow X/Y controls on the SKSE Menu Framework settings page. Labels match FP-only reconstruct (1.0 = freelook-equivalent X; Y multiplies live engine delta; no zoom/FOV scaling). Gamepad bow multipliers stay INI-only.
 - Save to INI writes a temp file then replaces the destination, and regenerates comments so the first UI save cannot leave an empty or comment-stripped INI.
 - Unsaved live UI values are not overwritten by throttled disk reload; further slider edits after Save return to the “Changes apply immediately…” prompt.

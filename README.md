@@ -1,8 +1,5 @@
 # Concise Mouse Consistency (CMC)
 
-CMC is a DLL-only SKSE plugin for Skyrim SE/AE/GOG/VR.
-It keeps mouse and gamepad look sensitivity consistent across camera states, restores first-person yaw that Skyrim halves or slows, and can remove third-person camera interpolation.
-
 ## What it does
 
 - No ESP/ESL/ESM required
@@ -13,6 +10,7 @@ It keeps mouse and gamepad look sensitivity consistent across camera states, res
 - Selective first-person half-rate yaw restoration while looking (sprint, bow aim, and other measured 0.5× states such as casting)
 - Wall-clock yaw compensation during slow-time (Eagle Eye and similar) in first- and third-person
 - Optional third-person smoothing removal
+- Opt-in per-state look overlays (walking, running, sprinting, bow aim, magic, one-hand, two-handed, dual wielding); all ship disabled
 - Optional gamepad look (right-stick) transforms
 - Alt-tab focus-spike suppression
 - Live INI reload and runtime-safe enable/disable (hooks stay installed; disabled features pass through)
@@ -29,14 +27,20 @@ CMC does not replace camera mods, apply automatic FOV-based input scaling, or no
 
 ## Build
 
-From a clean clone:
+Plugin builds need Visual Studio 2022 (MSVC v143) and CMake 3.24+. From a clean clone:
 
 ```powershell
 ./scripts/bootstrap-vcpkg.ps1
 cmake --preset plugin-release
 cmake --build --preset plugin-release
 ctest --preset plugin-release
+cmake --build --preset plugin-release --target package
 ```
+
+Outputs:
+
+- DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.54.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.
@@ -66,7 +70,7 @@ See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests. Do 
 
 - `CHANGELOG.md`
 - `CLAUDE.md` (contributor and automation guidance)
-- `dist/README.md` (release-package README)
+- `dist/README.md` (mod-page README; not packed into the ZIP)
 - `docs/OBJECTIVES.md`
 - `docs/IMPLEMENTATION_PLAN.md`
 - `docs/TECHNICAL_DESIGN.md`
