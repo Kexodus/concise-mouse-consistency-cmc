@@ -207,8 +207,9 @@ namespace msf
         bool compensateTimeYaw{ false };
     };
 
-    // Half-rate: exclusive FP && looking (measurement band is the restore gate;
-    // sprint/bow are telemetry hints only). TimeComp: timeDilated && exclusive
+    // Half-rate: looking && (exclusive FP || exclusive TP while sprinting); the
+    // measurement band is the restore gate (in FP sprint/bow are telemetry hints
+    // only). TimeComp: timeDilated && exclusive
     // (FP|TP) && looking — not bow-gated; agreement/stability gated at the apply
     // site. Both-true person flags reject half-rate and timeComp. Optional
     // menu/look-control gates apply when enabled.

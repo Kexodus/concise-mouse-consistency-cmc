@@ -1199,13 +1199,16 @@ namespace msf
                 }
             }
 
-            if (config.verboseLogging && lookCtx.firstPerson &&
+            // Third person is probed (not corrected) to measure whether TP sprint
+            // yaw also carries the 0.5 movementScale. The freelook EMA stays FP-only.
+            if (config.verboseLogging && (lookCtx.firstPerson || lookCtx.thirdPerson) &&
                 (std::abs(lookInput.x) >= 0.01F || std::abs(lookInput.y) >= 0.01F)) {
                 const float yawPerLook =
                     (std::abs(lookInput.x) >= 0.01F) ? (rotationData.z / lookInput.x) : 0.0F;
                 const std::string state = g_lastAimState;
 
-                if (ShouldUpdateFreelookYawEma(
+                if (lookCtx.firstPerson &&
+                    ShouldUpdateFreelookYawEma(
                         g_lastTrueFreelookEligible,
                         lookCtx.sprinting,
                         lookCtx.casting,
@@ -1224,6 +1227,7 @@ namespace msf
                         : 0.0F;
                     LogInfo(
                         "YawRotation"
+                        " person=" + std::string(lookCtx.thirdPerson ? (lookCtx.firstPerson ? "both" : "TP") : "FP") +
                         " state=" + state +
                         " sprinting=" + std::to_string(lookCtx.sprinting ? 1 : 0) +
                         " casting=" + std::to_string(lookCtx.casting ? 1 : 0) +
@@ -2143,13 +2147,15 @@ namespace msf
         }
 
         // Measurement-driven: exclusive FP + looking. Sprint/bow/casting are telemetry only.
+        // Exclusive TP is eligible only while sprinting (measured 0.5 on 2026-10-09);
+        // TP bow/casting keep engine and camera-mod deltas.
         // Both-true person flags must not unlock half-rate or timeComp.
         const bool exclusiveFirstPerson = ctx.firstPerson && !ctx.thirdPerson;
         const bool exclusiveThirdPerson = ctx.thirdPerson && !ctx.firstPerson;
         policy.restoreHalfRateYaw =
-            exclusiveFirstPerson &&
-            enableFirstPersonHook &&
-            ctx.looking;
+            ctx.looking &&
+            ((exclusiveFirstPerson && enableFirstPersonHook) ||
+             (exclusiveThirdPerson && enableThirdPersonHook && ctx.sprinting));
 
         const bool cameraHookEnabled =
             (exclusiveFirstPerson && enableFirstPersonHook) ||
