@@ -40,7 +40,7 @@ cmake --build --preset plugin-release --target package
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.54.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-1.0.1.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.

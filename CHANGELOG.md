@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-## [0.54] - 2026-10-09
+## [1.0.1] - 2026-10-09
 
-Promotes the 0.54b beta line to the public release. Includes everything in 0.54b and 0.54b.1 below.
+Promotes the 0.54b beta line to the public release as 1.0.1. Includes everything in 0.54b and 0.54b.1 below.
 
 ### Fixed
 
