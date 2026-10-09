@@ -12,6 +12,26 @@
 
 namespace msf
 {
+    // Keep mouse-only pitch correction across idle frames, but release it on
+    // controller look and exclude mixed-device frames from calibration.
+    struct MousePitchInputState
+    {
+        void OnMouse() noexcept { mouseOwnsPitch = true; }
+        void OnRightStick() noexcept
+        {
+            mouseOwnsPitch = false;
+            rightStickThisFrame = true;
+        }
+        bool ConsumeFrame() noexcept
+        {
+            const bool eligible = mouseOwnsPitch && !rightStickThisFrame;
+            rightStickThisFrame = false;
+            return eligible;
+        }
+        bool mouseOwnsPitch{ false };
+        bool rightStickThisFrame{ false };
+    };
+
     enum class HookRegistrationPoint
     {
         InputLook,
@@ -187,8 +207,9 @@ namespace msf
         bool compensateTimeYaw{ false };
     };
 
-    // Half-rate: exclusive FP && looking (measurement band is the restore gate;
-    // sprint/bow are telemetry hints only). TimeComp: timeDilated && exclusive
+    // Half-rate: looking && (exclusive FP || exclusive TP while sprinting); the
+    // measurement band is the restore gate (in FP sprint/bow are telemetry hints
+    // only). TimeComp: timeDilated && exclusive
     // (FP|TP) && looking — not bow-gated; agreement/stability gated at the apply
     // site. Both-true person flags reject half-rate and timeComp. Optional
     // menu/look-control gates apply when enabled.
@@ -268,6 +289,107 @@ namespace msf
     // own their own look pipeline once a ranged weapon is out. Requires real FP
     // (mount / furniture / etc. must not use the FP bow path).
     bool ShouldApplyBowAimMousePath(bool inFirstPerson, bool bowAiming) noexcept;
+
+    // NG v7 LookHandler inserts ProcessMotionGesture/ProcessSixaxis at slots 2/3 on
+    // 1.7.99+. 1.6.x keeps ProcessThumbstick/ProcessMouseMove at 2/3.
+    std::uint32_t LookHandlerProcessThumbstickVtableIndex(bool isSkyrim1799OrNewer) noexcept;
+    std::uint32_t LookHandlerProcessMouseMoveVtableIndex(bool isSkyrim1799OrNewer) noexcept;
+
+    // One-winner look overlay. Priority: bow > magic > sprint > dual > 2H > 1H > run > walk.
+    enum class LookOverrideState : std::uint8_t
+    {
+        None = 0,
+        Walking,
+        Running,
+        Sprinting,
+        BowAim,
+        MagicUse,
+        OneHand,
+        TwoHanded,
+        DualWielding
+    };
+
+    struct LookOverrideFacts
+    {
+        bool bowAim{ false };
+        bool magicUse{ false };
+        bool sprinting{ false };
+        bool dualWielding{ false };
+        bool twoHanded{ false };
+        bool oneHand{ false };
+        bool running{ false };
+        bool walking{ false };
+    };
+
+    LookOverrideState ResolveLookOverrideState(const LookOverrideFacts& facts) noexcept;
+    const StateLookOverride* GetStateLookOverride(
+        const ConfigValues& config,
+        LookOverrideState state) noexcept;
+    // Disabled, or neither/both person, or the matching person gate is off → no overlay.
+    bool IsLookOverrideActive(
+        const StateLookOverride& overlay,
+        bool firstPerson,
+        bool thirdPerson) noexcept;
+    // Bow overlay active → overlay X/Y. Otherwise 0.53b fBowAim* (mouse FP only; gamepad both).
+    std::pair<float, float> SelectBowAimAxisMultipliers(
+        const ConfigValues& config,
+        bool isGamepad,
+        bool firstPerson,
+        bool thirdPerson) noexcept;
+    // Post-ApplyTransform overlay. BowAim is a no-op here (already replaced fBowAim*).
+    std::pair<float, float> ApplyLookOverrideScale(
+        float postTransformX,
+        float postTransformY,
+        const ConfigValues& config,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept;
+    // ApplyTransform (global × device) then optional non-bow overlay. BowAim overlay is
+    // applied as a replacement for fBowAim* before the transform. No FOV parameter.
+    std::pair<float, float> ApplyLookComposition(
+        float deltaX,
+        float deltaY,
+        const ConfigValues& config,
+        bool isGamepad,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept;
+
+    struct LookOverrideLocomotion
+    {
+        bool walking{ false };
+        bool running{ false };
+        bool sprinting{ false };
+    };
+    // Standing still never wins walk/run. Sprint clears walk/run. Run beats walk if both bits.
+    LookOverrideLocomotion ClassifyLookOverrideLocomotion(
+        bool moving,
+        bool walkingBit,
+        bool runningBit,
+        bool sprintingBit) noexcept;
+
+    enum class EquippedHandKind : std::uint8_t
+    {
+        Empty = 0,
+        Shield,
+        OneHandMelee,
+        TwoHandMelee,
+        Bow,
+        Staff,
+        Other
+    };
+    struct LookOverrideWeaponStyle
+    {
+        bool oneHand{ false };
+        bool twoHanded{ false };
+        bool dualWielding{ false };
+    };
+    // Drawn loadout only. Bows never count as two-handed. Staff is not magic-use.
+    LookOverrideWeaponStyle ClassifyLookOverrideWeaponStyle(
+        EquippedHandKind rightHand,
+        EquippedHandKind leftHand,
+        bool weaponDrawn) noexcept;
+
     std::pair<float, float> ApplyBowAimMouseDeltas(
         float rawPixelX,
         float engineDeltaX,

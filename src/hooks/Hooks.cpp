@@ -32,6 +32,7 @@
 #include <RE/P/PlayerControls.h>
 #include <RE/P/PlayerControlsData.h>
 #include <RE/RTTI.h>
+#include <RE/T/TESObjectARMO.h>
 #include <RE/T/TESObjectWEAP.h>
 #include <RE/T/ThirdPersonState.h>
 #include <RE/T/ThumbstickEvent.h>
@@ -294,6 +295,19 @@ namespace msf
         FirstPersonStateUpdateFn g_originalFirstPersonStateUpdate{ nullptr };
         ThirdPersonHandleLookInputFn g_originalThirdPersonHandleLookInput{ nullptr };
         HookCoordinator* g_activeCoordinator{ nullptr };
+        std::atomic<bool> g_loggedFirstLookMouse{ false };
+        std::atomic<bool> g_loggedFirstLookThumb{ false };
+        std::atomic<bool> g_loggedFirstPlayerYaw{ false };
+        std::atomic<bool> g_loggedFirstFpUpdate{ false };
+        std::atomic<bool> g_loggedFirstTpLook{ false };
+
+        void LogHookFirstCall(const char* name, std::atomic<bool>& flag) noexcept
+        {
+            if (!flag.exchange(true, std::memory_order_relaxed)) {
+                LogInfo(std::string("Hook first call: ") + name);
+            }
+        }
+
         std::uint64_t g_lookHookCallsTotal{ 0 };
         std::uint64_t g_lookHookCallsFirstPerson{ 0 };
         std::uint64_t g_lookHookCallsThirdPerson{ 0 };
@@ -372,6 +386,7 @@ namespace msf
 
         std::mutex g_mouseTelemetryLock;
         MouseTelemetryWindow g_mouseTelemetryWindow;
+        MousePitchInputState g_mousePitchInputState;
 
         std::uint64_t g_thumbstickHookCallsTotal{ 0 };
         std::uint64_t g_thumbstickTransformAppliedCount{ 0 };
@@ -427,6 +442,76 @@ namespace msf
             const auto attackState = GetAttackStateRelocated(player);
             return attackState >= RE::ATTACK_STATE_ENUM::kBowDraw &&
                    attackState <= RE::ATTACK_STATE_ENUM::kBowNextAttack;
+        }
+
+        EquippedHandKind ClassifyEquippedHand(RE::TESForm* object) noexcept
+        {
+            if (!object) {
+                return EquippedHandKind::Empty;
+            }
+            if (auto* weapon = skyrim_cast<RE::TESObjectWEAP*>(object)) {
+                switch (weapon->GetWeaponType()) {
+                case RE::WEAPON_TYPE::kOneHandSword:
+                case RE::WEAPON_TYPE::kOneHandDagger:
+                case RE::WEAPON_TYPE::kOneHandAxe:
+                case RE::WEAPON_TYPE::kOneHandMace:
+                    return EquippedHandKind::OneHandMelee;
+                case RE::WEAPON_TYPE::kTwoHandSword:
+                case RE::WEAPON_TYPE::kTwoHandAxe:
+                    return EquippedHandKind::TwoHandMelee;
+                case RE::WEAPON_TYPE::kBow:
+                case RE::WEAPON_TYPE::kCrossbow:
+                    return EquippedHandKind::Bow;
+                case RE::WEAPON_TYPE::kStaff:
+                    return EquippedHandKind::Staff;
+                default:
+                    return EquippedHandKind::Other;
+                }
+            }
+            if (auto* armor = skyrim_cast<RE::TESObjectARMO*>(object)) {
+                if (armor->IsShield()) {
+                    return EquippedHandKind::Shield;
+                }
+            }
+            return EquippedHandKind::Other;
+        }
+
+        LookOverrideFacts CollectLookOverrideFacts(
+            RE::PlayerCharacter* player,
+            bool knownBowAim) noexcept
+        {
+            LookOverrideFacts facts{};
+            if (!player) {
+                return facts;
+            }
+
+            facts.bowAim = knownBowAim;
+            facts.magicUse = DetectCastingStatesOnly(player);
+
+            const auto& as1 = REL::RelocateMemberIfNewer<RE::ActorState::ActorState1>(
+                SKSE::RUNTIME_SSE_1_6_629, player, 0xC0, 0xC8);
+            const bool moving =
+                static_cast<bool>(as1.movingBack) ||
+                static_cast<bool>(as1.movingForward) ||
+                static_cast<bool>(as1.movingLeft) ||
+                static_cast<bool>(as1.movingRight);
+            const auto locomotion = ClassifyLookOverrideLocomotion(
+                moving,
+                static_cast<bool>(as1.walking),
+                static_cast<bool>(as1.running),
+                static_cast<bool>(as1.sprinting));
+            facts.sprinting = locomotion.sprinting;
+            facts.running = locomotion.running;
+            facts.walking = locomotion.walking;
+
+            const auto style = ClassifyLookOverrideWeaponStyle(
+                ClassifyEquippedHand(player->GetEquippedObject(false)),
+                ClassifyEquippedHand(player->GetEquippedObject(true)),
+                IsWeaponDrawnRelocated(player));
+            facts.oneHand = style.oneHand;
+            facts.twoHanded = style.twoHanded;
+            facts.dualWielding = style.dualWielding;
+            return facts;
         }
 
         const char* ClassifyAimState(bool bowOut, bool bowAim, bool bowZoomedIn) noexcept
@@ -666,16 +751,19 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("FirstPersonState::Update", g_loggedFirstFpUpdate);
             const auto config = ConfigManager::Get().GetSnapshot();
             const auto before = CaptureFirstPersonOrientation(state, config.verboseLogging);
             g_originalFirstPersonStateUpdate(state, nextState);
             const auto after = CaptureFirstPersonOrientation(state, config.verboseLogging);
 
             MouseTelemetryWindow input{};
+            bool mouseOwnsPitch = false;
             {
                 std::scoped_lock lock(g_mouseTelemetryLock);
                 input = std::move(g_mouseTelemetryWindow);
                 g_mouseTelemetryWindow = {};
+                mouseOwnsPitch = g_mousePitchInputState.ConsumeFrame();
             }
             ++g_firstPersonTelemetryFrame;
             auto* player = RE::PlayerCharacter::GetSingleton();
@@ -727,6 +815,7 @@ namespace msf
             // Sprint / casting exclude calibration only — freelook still must not normalize.
             const bool castingBlocksPitchBaseline = DetectCastingStatesOnly(player);
             const bool trueFreelookBaseline =
+                mouseOwnsPitch &&
                 hasInputWindow &&
                 stableState &&
                 IsTrueFreelookPitchBaselineEligible(
@@ -767,6 +856,7 @@ namespace msf
                 true,
                 g_dilatedYawBroughtToWallClock.load(std::memory_order_relaxed));
             const bool normalizationEligible =
+                mouseOwnsPitch &&
                 config.enabled &&
                 config.enableFirstPersonHook &&
                 !menuBlocksPitch &&
@@ -785,6 +875,7 @@ namespace msf
                 normalizationEligible);
 
             if (trueFreelookEnvironment ||
+                !mouseOwnsPitch ||
                 !config.enabled ||
                 !config.enableFirstPersonHook ||
                 menuBlocksPitch ||
@@ -855,6 +946,7 @@ namespace msf
                     " normalizedTargetPitchDelta=" + std::to_string(normalizedTargetPitchDelta) +
                     " freelookPitchPerLook=" + std::to_string(g_freelookPitchPerLook) +
                     " pitchNormalized=" + std::to_string(pitchNormalized ? 1 : 0) +
+                    " mouseOwnsPitch=" + std::to_string(mouseOwnsPitch ? 1 : 0) +
                     " localEulerDelta=(" + std::to_string(localXDelta) + "," +
                         std::to_string(localYDelta) + "," + std::to_string(localZDelta) + ")" +
                     " worldEulerDelta=(" + std::to_string(worldXDelta) + "," +
@@ -907,6 +999,7 @@ namespace msf
         {
             std::scoped_lock lock(g_mouseTelemetryLock);
             g_mouseTelemetryWindow = {};
+            g_mousePitchInputState = {};
         }
 
         void PlayerModifyMovementDataHook(
@@ -919,6 +1012,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("PlayerCharacter::ModifyMovementData", g_loggedFirstPlayerYaw);
             auto* controls = RE::PlayerControls::GetSingleton();
             auto* camera = RE::PlayerCamera::GetSingleton();
             const auto config = ConfigManager::Get().GetSnapshot();
@@ -1105,13 +1199,16 @@ namespace msf
                 }
             }
 
-            if (config.verboseLogging && lookCtx.firstPerson &&
+            // Third person is probed (not corrected) to measure whether TP sprint
+            // yaw also carries the 0.5 movementScale. The freelook EMA stays FP-only.
+            if (config.verboseLogging && (lookCtx.firstPerson || lookCtx.thirdPerson) &&
                 (std::abs(lookInput.x) >= 0.01F || std::abs(lookInput.y) >= 0.01F)) {
                 const float yawPerLook =
                     (std::abs(lookInput.x) >= 0.01F) ? (rotationData.z / lookInput.x) : 0.0F;
                 const std::string state = g_lastAimState;
 
-                if (ShouldUpdateFreelookYawEma(
+                if (lookCtx.firstPerson &&
+                    ShouldUpdateFreelookYawEma(
                         g_lastTrueFreelookEligible,
                         lookCtx.sprinting,
                         lookCtx.casting,
@@ -1130,6 +1227,7 @@ namespace msf
                         : 0.0F;
                     LogInfo(
                         "YawRotation"
+                        " person=" + std::string(lookCtx.thirdPerson ? (lookCtx.firstPerson ? "both" : "TP") : "FP") +
                         " state=" + state +
                         " sprinting=" + std::to_string(lookCtx.sprinting ? 1 : 0) +
                         " casting=" + std::to_string(lookCtx.casting ? 1 : 0) +
@@ -1161,6 +1259,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("LookHandler::ProcessMouseMove", g_loggedFirstLookMouse);
             if (!event || !g_activeCoordinator) {
                 g_originalProcessMouseMove(handler, event, data);
                 return;
@@ -1339,6 +1438,14 @@ namespace msf
             float deltaX = data->lookInputVec.x;
             float deltaY = data->lookInputVec.y;
 
+            const auto overrideFacts = CollectLookOverrideFacts(player, isBowAim);
+            const auto overrideState = ResolveLookOverrideState(overrideFacts);
+            const auto [selectedBowX, selectedBowY] = SelectBowAimAxisMultipliers(
+                reloadedConfig,
+                false,
+                inFirstPerson,
+                inThirdPerson);
+
             float eagleEyeY = 1.0F;
             float bowY = 1.0F;
             if (isBowAim) {
@@ -1359,12 +1466,10 @@ namespace msf
                 // FOV is telemetry only while final yaw and pitch gains are measured.
                 eagleEyeY = 1.0F;
                 // Bow aim X reconstruction + configurable bow multipliers are first-person
-                // only. In third person, leave the engine/camera-mod look deltas alone.
+                // only. In third person, leave the engine/camera-mod look deltas alone
+                // unless a BowAim overlay is opted in for third person.
                 if (ShouldApplyBowAimMousePath(inFirstPerson, true)) {
-                    const float bowX = static_cast<float>(reloadedConfig.bowAimMouseXMultiplier);
-                    bowY = CalculateBowAimVerticalMultiplier(
-                        true,
-                        static_cast<float>(reloadedConfig.bowAimMouseYMultiplier));
+                    bowY = CalculateBowAimVerticalMultiplier(true, selectedBowY);
                     // Reconstruct the normal-sensitivity X delta from raw pixels and the sampled
                     // scale, then apply bowX relative to that baseline. Falls back to the
                     // engine delta if the scale is not yet seeded.
@@ -1378,8 +1483,12 @@ namespace msf
                         deltaX,
                         deltaY,
                         scaleX,
-                        bowX,
+                        selectedBowX,
                         bowY);
+                } else if (selectedBowX != 1.0F || selectedBowY != 1.0F) {
+                    deltaX *= selectedBowX;
+                    deltaY *= selectedBowY;
+                    bowY = selectedBowY;
                 }
             } else if (bowOut) {
                 if (inThirdPerson) {
@@ -1391,8 +1500,15 @@ namespace msf
                 }
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(
+            const auto transformed = g_activeCoordinator->ApplyTransform(
                 deltaX, deltaY, reloadedConfig, false);
+            const auto [outX, outY] = ApplyLookOverrideScale(
+                transformed.first,
+                transformed.second,
+                reloadedConfig,
+                overrideState,
+                inFirstPerson,
+                inThirdPerson);
 
             ++g_lookTransformAppliedCount;
             g_lastOutX = outX;
@@ -1420,6 +1536,7 @@ namespace msf
             // first-person normalizer after a camera transition.
             if (inFirstPerson) {
                 std::scoped_lock lock(g_mouseTelemetryLock);
+                g_mousePitchInputState.OnMouse();
                 auto& window = g_mouseTelemetryWindow;
                 const auto eventId = ++g_mouseTelemetryEventId;
                 if (window.eventCount == 0) {
@@ -1469,6 +1586,14 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("LookHandler::ProcessThumbstick", g_loggedFirstLookThumb);
+            // Observe native stick look even when CMC's gamepad transform is off.
+            // Left-stick movement must not relinquish mouse pitch ownership.
+            if (event && event->IsRight()) {
+                std::scoped_lock lock(g_mouseTelemetryLock);
+                g_mousePitchInputState.OnRightStick();
+                g_mouseTelemetryWindow = {};
+            }
             if (!event || !g_activeCoordinator) {
                 g_originalProcessThumbstick(handler, event, data);
                 return;
@@ -1516,11 +1641,20 @@ namespace msf
             float rawX = event->xValue;
             float rawY = event->yValue;
 
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const bool isBowAim = DetectBowAim(player);
+            const auto overrideFacts = CollectLookOverrideFacts(player, isBowAim);
+            const auto overrideState = ResolveLookOverrideState(overrideFacts);
+
             // Gamepad bow multipliers apply in both perspectives. The first-person-only
             // restriction belongs to raw-mouse reconstruction, not thumbstick tuning.
-            if (DetectBowAim(RE::PlayerCharacter::GetSingleton())) {
-                const float bowX = static_cast<float>(reloadedConfig.bowAimGamepadXMultiplier);
-                const float bowY = static_cast<float>(reloadedConfig.bowAimGamepadYMultiplier);
+            // An enabled BowAim overlay replaces fBowAimGamepad* instead of stacking.
+            if (isBowAim) {
+                const auto [bowX, bowY] = SelectBowAimAxisMultipliers(
+                    reloadedConfig,
+                    true,
+                    inFirstPerson,
+                    inThirdPerson);
                 if (bowX != 1.0f) { rawX *= bowX; }
                 if (bowY != 1.0f) { rawY *= bowY; }
             }
@@ -1530,7 +1664,14 @@ namespace msf
                 return;
             }
 
-            const auto [outX, outY] = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig, true);
+            const auto transformed = g_activeCoordinator->ApplyTransform(rawX, rawY, reloadedConfig, true);
+            const auto [outX, outY] = ApplyLookOverrideScale(
+                transformed.first,
+                transformed.second,
+                reloadedConfig,
+                overrideState,
+                inFirstPerson,
+                inThirdPerson);
             ++g_thumbstickTransformAppliedCount;
             g_lastStickRawX = rawX;
             g_lastStickRawY = rawY;
@@ -1559,6 +1700,7 @@ namespace msf
                 return;
             }
 
+            LogHookFirstCall("ThirdPersonState::HandleLookInput", g_loggedFirstTpLook);
             const float beforePitch = state ? state->freeRotation.y : 0.0F;
             g_originalThirdPersonHandleLookInput(state, input);
 
@@ -2005,13 +2147,15 @@ namespace msf
         }
 
         // Measurement-driven: exclusive FP + looking. Sprint/bow/casting are telemetry only.
+        // Exclusive TP is eligible only while sprinting (measured 0.5 on 2026-10-09);
+        // TP bow/casting keep engine and camera-mod deltas.
         // Both-true person flags must not unlock half-rate or timeComp.
         const bool exclusiveFirstPerson = ctx.firstPerson && !ctx.thirdPerson;
         const bool exclusiveThirdPerson = ctx.thirdPerson && !ctx.firstPerson;
         policy.restoreHalfRateYaw =
-            exclusiveFirstPerson &&
-            enableFirstPersonHook &&
-            ctx.looking;
+            ctx.looking &&
+            ((exclusiveFirstPerson && enableFirstPersonHook) ||
+             (exclusiveThirdPerson && enableThirdPersonHook && ctx.sprinting));
 
         const bool cameraHookEnabled =
             (exclusiveFirstPerson && enableFirstPersonHook) ||
@@ -2098,6 +2242,215 @@ namespace msf
             false,
             TimeCompMode::None
         };
+    }
+
+    LookOverrideState ResolveLookOverrideState(const LookOverrideFacts& facts) noexcept
+    {
+        if (facts.bowAim) {
+            return LookOverrideState::BowAim;
+        }
+        if (facts.magicUse) {
+            return LookOverrideState::MagicUse;
+        }
+        if (facts.sprinting) {
+            return LookOverrideState::Sprinting;
+        }
+        if (facts.dualWielding) {
+            return LookOverrideState::DualWielding;
+        }
+        if (facts.twoHanded) {
+            return LookOverrideState::TwoHanded;
+        }
+        if (facts.oneHand) {
+            return LookOverrideState::OneHand;
+        }
+        if (facts.running) {
+            return LookOverrideState::Running;
+        }
+        if (facts.walking) {
+            return LookOverrideState::Walking;
+        }
+        return LookOverrideState::None;
+    }
+
+    const StateLookOverride* GetStateLookOverride(
+        const ConfigValues& config,
+        LookOverrideState state) noexcept
+    {
+        switch (state) {
+        case LookOverrideState::Walking:
+            return &config.walking;
+        case LookOverrideState::Running:
+            return &config.running;
+        case LookOverrideState::Sprinting:
+            return &config.sprinting;
+        case LookOverrideState::BowAim:
+            return &config.bowAim;
+        case LookOverrideState::MagicUse:
+            return &config.magicUse;
+        case LookOverrideState::OneHand:
+            return &config.oneHand;
+        case LookOverrideState::TwoHanded:
+            return &config.twoHanded;
+        case LookOverrideState::DualWielding:
+            return &config.dualWielding;
+        case LookOverrideState::None:
+        default:
+            return nullptr;
+        }
+    }
+
+    bool IsLookOverrideActive(
+        const StateLookOverride& overlay,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (overlay.disabled) {
+            return false;
+        }
+        if (firstPerson == thirdPerson) {
+            return false;
+        }
+        if (firstPerson) {
+            return overlay.applyFirstPerson;
+        }
+        return overlay.applyThirdPerson;
+    }
+
+    std::pair<float, float> SelectBowAimAxisMultipliers(
+        const ConfigValues& config,
+        bool isGamepad,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (IsLookOverrideActive(config.bowAim, firstPerson, thirdPerson)) {
+            return {
+                static_cast<float>(config.bowAim.xSensitivity),
+                static_cast<float>(config.bowAim.ySensitivity)
+            };
+        }
+        if (isGamepad) {
+            return {
+                static_cast<float>(config.bowAimGamepadXMultiplier),
+                static_cast<float>(config.bowAimGamepadYMultiplier)
+            };
+        }
+        if (firstPerson && !thirdPerson) {
+            return {
+                static_cast<float>(config.bowAimMouseXMultiplier),
+                static_cast<float>(config.bowAimMouseYMultiplier)
+            };
+        }
+        return { 1.0F, 1.0F };
+    }
+
+    std::pair<float, float> ApplyLookOverrideScale(
+        float postTransformX,
+        float postTransformY,
+        const ConfigValues& config,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (state == LookOverrideState::None || state == LookOverrideState::BowAim) {
+            return { postTransformX, postTransformY };
+        }
+        const auto* overlay = GetStateLookOverride(config, state);
+        if (!overlay || !IsLookOverrideActive(*overlay, firstPerson, thirdPerson)) {
+            return { postTransformX, postTransformY };
+        }
+        return {
+            postTransformX * static_cast<float>(overlay->xSensitivity),
+            postTransformY * static_cast<float>(overlay->ySensitivity)
+        };
+    }
+
+    std::pair<float, float> ApplyLookComposition(
+        float deltaX,
+        float deltaY,
+        const ConfigValues& config,
+        bool isGamepad,
+        LookOverrideState state,
+        bool firstPerson,
+        bool thirdPerson) noexcept
+    {
+        if (state == LookOverrideState::BowAim) {
+            const auto [bowX, bowY] = SelectBowAimAxisMultipliers(
+                config,
+                isGamepad,
+                firstPerson,
+                thirdPerson);
+            deltaX *= bowX;
+            deltaY *= bowY;
+        }
+
+        HookCoordinator coordinator;
+        const auto [transformedX, transformedY] = coordinator.ApplyTransform(
+            deltaX,
+            deltaY,
+            config,
+            isGamepad);
+        return ApplyLookOverrideScale(
+            transformedX,
+            transformedY,
+            config,
+            state,
+            firstPerson,
+            thirdPerson);
+    }
+
+    LookOverrideLocomotion ClassifyLookOverrideLocomotion(
+        bool moving,
+        bool walkingBit,
+        bool runningBit,
+        bool sprintingBit) noexcept
+    {
+        LookOverrideLocomotion locomotion{};
+        locomotion.sprinting = sprintingBit;
+        if (!moving || sprintingBit) {
+            return locomotion;
+        }
+        if (runningBit) {
+            locomotion.running = true;
+            return locomotion;
+        }
+        if (walkingBit) {
+            locomotion.walking = true;
+        }
+        return locomotion;
+    }
+
+    LookOverrideWeaponStyle ClassifyLookOverrideWeaponStyle(
+        EquippedHandKind rightHand,
+        EquippedHandKind leftHand,
+        bool weaponDrawn) noexcept
+    {
+        LookOverrideWeaponStyle style{};
+        if (!weaponDrawn) {
+            return style;
+        }
+        if (rightHand == EquippedHandKind::Bow || leftHand == EquippedHandKind::Bow) {
+            return style;
+        }
+        if (rightHand == EquippedHandKind::TwoHandMelee ||
+            leftHand == EquippedHandKind::TwoHandMelee) {
+            style.twoHanded = true;
+            return style;
+        }
+        const bool rightOneHand = rightHand == EquippedHandKind::OneHandMelee;
+        const bool leftOneHand = leftHand == EquippedHandKind::OneHandMelee;
+        if (rightOneHand && leftOneHand) {
+            style.dualWielding = true;
+            return style;
+        }
+        const auto otherIsEmptyOrShield = [](EquippedHandKind hand) noexcept {
+            return hand == EquippedHandKind::Empty || hand == EquippedHandKind::Shield;
+        };
+        if ((rightOneHand && otherIsEmptyOrShield(leftHand)) ||
+            (leftOneHand && otherIsEmptyOrShield(rightHand))) {
+            style.oneHand = true;
+        }
+        return style;
     }
 
     std::pair<float, float> ApplyBowAimMouseDeltas(
@@ -2340,7 +2693,17 @@ namespace msf
 
     bool ShouldApplyBowAimMousePath(bool inFirstPerson, bool bowAiming) noexcept
     {
-        return bowAiming && inFirstPerson;
+        return inFirstPerson && bowAiming;
+    }
+
+    std::uint32_t LookHandlerProcessThumbstickVtableIndex(bool isSkyrim1799OrNewer) noexcept
+    {
+        return isSkyrim1799OrNewer ? 4U : 2U;
+    }
+
+    std::uint32_t LookHandlerProcessMouseMoveVtableIndex(bool isSkyrim1799OrNewer) noexcept
+    {
+        return isSkyrim1799OrNewer ? 5U : 3U;
     }
 
     bool ShouldEmitSampledLog(
@@ -2359,13 +2722,20 @@ namespace msf
     {
 #if MSF_USE_COMMONLIBSSE
         REL::Relocation<std::uintptr_t> lookHandlerVTable{ RE::VTABLE_LookHandler[0] };
+#if defined(ENABLE_SKYRIM_AE)
+        const bool ae1799 = REL::Module::IsAtLeast(SKSE::RUNTIME_SSE_1_7_99);
+#else
+        const bool ae1799 = false;
+#endif
+        const auto thumbstickIndex = LookHandlerProcessThumbstickVtableIndex(ae1799);
+        const auto mouseIndex = LookHandlerProcessMouseMoveVtableIndex(ae1799);
         if (!g_originalProcessThumbstick) {
             g_originalProcessThumbstick = reinterpret_cast<ProcessThumbstickFn>(
-                lookHandlerVTable.write_vfunc(2, ProcessThumbstickHook));
+                lookHandlerVTable.write_vfunc(thumbstickIndex, ProcessThumbstickHook));
         }
         if (!g_originalProcessMouseMove) {
             g_originalProcessMouseMove = reinterpret_cast<ProcessMouseMoveFn>(
-                lookHandlerVTable.write_vfunc(3, ProcessMouseMoveHook));
+                lookHandlerVTable.write_vfunc(mouseIndex, ProcessMouseMoveHook));
         }
 
         if (!g_originalProcessThumbstick || !g_originalProcessMouseMove) {
@@ -2448,11 +2818,20 @@ namespace msf
         }
 
         REL::Relocation<std::uintptr_t> lookHandlerVTable{ RE::VTABLE_LookHandler[0] };
+#if defined(ENABLE_SKYRIM_AE)
+        const bool ae1799 = REL::Module::IsAtLeast(SKSE::RUNTIME_SSE_1_7_99);
+#else
+        const bool ae1799 = false;
+#endif
+        const auto thumbstickIndex = LookHandlerProcessThumbstickVtableIndex(ae1799);
+        const auto mouseIndex = LookHandlerProcessMouseMoveVtableIndex(ae1799);
         if (g_originalProcessThumbstick) {
-            lookHandlerVTable.write_vfunc(2, reinterpret_cast<std::uintptr_t>(g_originalProcessThumbstick));
+            lookHandlerVTable.write_vfunc(
+                thumbstickIndex, reinterpret_cast<std::uintptr_t>(g_originalProcessThumbstick));
         }
         if (g_originalProcessMouseMove) {
-            lookHandlerVTable.write_vfunc(3, reinterpret_cast<std::uintptr_t>(g_originalProcessMouseMove));
+            lookHandlerVTable.write_vfunc(
+                mouseIndex, reinterpret_cast<std::uintptr_t>(g_originalProcessMouseMove));
         }
         g_originalProcessThumbstick = nullptr;
         g_originalProcessMouseMove = nullptr;
@@ -2539,6 +2918,7 @@ namespace msf
         {
             std::scoped_lock lock(g_mouseTelemetryLock);
             g_mouseTelemetryWindow = {};
+            g_mousePitchInputState = {};
         }
         LogInfo("Installed FirstPersonState::Update final-axis telemetry hook.");
         return true;

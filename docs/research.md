@@ -6,6 +6,12 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Third-person sprint carries the same 0.5 yaw movementScale (2026-10-09)
+End-user report (Skyrim 1.5.97): first-person sprint felt fixed, third-person sprint did not. Half-rate restore was exclusive-FP only, and the verbose `YawRotation` probe only sampled FP, so TP sprint had never been measured. A TP-sampling probe on Steam 1.6.1170 / SKSE 2.2.8 with IC+SmoothCam (`BuildIdentity version=0.54`, 12:10-12:13): TP sprint frames with horizontal input logged `observedScale=0.500` with `yawPerLook≈0.0126-0.0141` against `freelookYawPerLook≈0.026-0.027` (11 of 13 sprint samples; the rest were one zero-X frame and one `1.0` transition frame). TP walking frames all logged `≈1.0`. TP standing look logged `rotYawEngine=0` (camera orbit, not player yaw), so the band never fires there. Fix: exclusive TP is half-rate eligible only while `sprinting` (sprint hint applies on the first in-band hit). TP bow and casting remain uncorrected because they were not measured. **Validated 2026-10-09 12:15** (same setup, DLL `b7e8a1e1`): TP sprint frames logged `thirdPerson=1 sprinting=1 halfRate=1 observedScale=0.500` with `restoredYaw` = 2x `engineYaw`, `yawRatioToFreelook≈0.98-1.17`; no CMC errors or crash reports. The user confirmed TP sprint feel matches normal look.
+
+### Menu Framework pages at PostLoad via GetModuleHandle (2026-09-02)
+Do not `LoadLibraryA` `SKSEMenuFramework.dll` during `SKSEPlugin_Load`. Register SKSE's PostLoad listener, then `GetModuleHandle` a DLL SKSE already loaded. Steam 1.6.1170 / SKSE 2.2.8 / IC+SmoothCam playtest: `BuildIdentity` `bytes=717312`, `Deferred SKSE Menu Framework registration until PostLoad` at 12:49:13, `UI Bridge initialized` at 12:49:14 (SKSE message type 0 to handle 139), then D3D/ImGui at 12:49:39 with no `_purecall` abort. In-world: `Hook first call:` `FirstPersonState::Update`, `PlayerCharacter::ModifyMovementData`, `LookHandler::ProcessMouseMove` (1.6 vtable 2/3). No CrashLogger report. 1.7.99+ LookHandler 4/5 still untested. Compat stayed `mode=0` (keep TP smoothing removal).
+
 ### Orphan half-rate restore + freelook yaw EMA poison reject (2026-08-12)
 Half-rate policy is measurement-driven: exclusive `FP && looking` (no sprint/bow requirement; both-true person flags rejected). Restore still needs `observedScale∈[0.48,0.52]`; orphan cast/etc. also needs two consecutive in-band hits while policy-eligible, while sprint/bow hints may restore on the first hit. In-band streak resets when policy-ineligible. Freelook yaw EMA rejects half-scale samples and casting frames so `freelookYawPerLook` is not poisoned to ~0.5×. Casting/staff scans run only for verbose telemetry + EMA — not on the quiet restore hot path; restore stays measurement-driven (orphan band), not casting-triggered.
 
@@ -101,6 +107,11 @@ IC reads these passively via its own `IsAiming()` helper. Any bow detection fail
 
 ## Doesn't Work
 
+### Registering Menu Framework pages during `SKSEPlugin_Load` / `LoadLibraryA` (2026-09-02)
+Registering multiple SKSE Menu Framework pages during `SKSEPlugin_Load` via `LoadLibraryA` before Menu Framework is ready causes a `_purecall` / `FAST_FAIL` abort ~17s after D3D on Steam 1.6.1170 / SKSE 2.2.8. Two CTDs (12:20:26 and 12:21:44) with CMC enabled (`BuildIdentity` `0.54b` `bytes=715776`); unchecking CMC reached the main menu. CMC log was already clean (`Initialization complete`, UI Bridge registered during Load). WER: `ucrtbase.dll` `0xc0000409` `ExceptionInformation=7`. Minidumps put the crash thread on `_purecall` → `abort` in `SkyrimSE.exe` (no CMC frames). CrashLogger writes no report for fail-fast abort.
+
+Not Windows 126, not Address Library v5 rejection, not a hook-install failure. Production fix is PostLoad + `GetModuleHandle` only — see Works. Do not restore Load-time `LoadLibraryA` page registration.
+
 ### NG v7 + default `x64-windows` dynamic vcpkg triplet (2026-08-31)
 alandtse CommonLibSSE-NG `v7.0.0` PUBLIC-links vcpkg spdlog/fmt. Building the plugin with `VCPKG_TARGET_TRIPLET=x64-windows` produces PE imports of `spdlog.dll` and `fmt.dll`. Those DLLs are not packaged or deployed, so SKSE `LoadLibrary` fails with Windows 126 (`ERROR_MOD_NOT_FOUND`) — logged as `couldn't load plugin 126`. Confirmed on Skyrim 1.6.1170 / SKSE 2.2.8: plugin alone → 126; plugin plus those two DLLs beside it → success. Address Library v5 metadata is not the 1.6 failure (SKSE 2.2.6/2.2.8 ignore unknown `versionIndependenceEx` bits). 0.1.5-beta had no spdlog/fmt PE imports. **Fix:** plugin preset `x64-windows-static-md` (static libs, dynamic CRT). Do not ship spdlog/fmt next to the plugin, and do not use fully static `x64-windows-static` (that static-links the CRT, which is wrong for SKSE plugins).
 
@@ -181,3 +192,58 @@ These methods read from compile-time base class offsets (SE layout). On AE 1.6.6
 
 ### IC suppresses `kIronSights` camera transition during bow aim (2026-04-04, verified via source)
 IC keeps the camera in `kFirstPerson` state throughout bow drawing/aiming — it manages bow state internally via its own camera system (`FirstPerson.cpp` state machine). Do not rely on `kIronSights` camera state for bow detection when IC is active. Use `GetAttackState()` range checks instead.
+
+---
+
+## Planned (not playtested)
+
+### Steam Controller E-click freelook snap: Auto Input Switch automatic mode (2026-09-06)
+The reported trigger combines left-stick movement, trackpad mouse movement, and
+keyboard E from a trackpad click. The winning Auto Input Switch 1.3.1 INI used
+`iPreferredPlatform=-1`. Its event sink changes mode on keyboard, mouse, and
+gamepad events; mouse-vector conversion depends on the mode at that point in
+the event list. A preceding E event can skip that conversion. Native dispatch
+ordering has not been verified, so that detailed mechanism remains an inference.
+The [mouse fork author's documentation](https://www.nexusmods.com/skyrimspecialedition/mods/166519)
+explicitly describes snapping with simultaneous analog stick, mouse, and keyboard
+and recommends fixed platform selection. See also the
+[original hyper-sensitive-mouse correction](https://github.com/Exit-9B/AutoInputSwitch/commit/617eac0dece996448a0a9539eb824702122fd2fe).
+
+Applied local configuration remedy: back up the active AIS INI and change to
+`iPreferredPlatform=0` for trackpad mouse look. This bypasses the auto-switch event
+sink while keeping gamepad device hooks, but uses keyboard/mouse UI hints and
+disables rumble. Restart and user playtest are pending. CMC verbose logging was
+restored to false. No additional CMC input patch was made for this finding.
+
+### Mouse pitch ownership on controller handoff (2026-09-06)
+The 0.54b.1 Steam Controller playtest (Auto Input Switch 1.3.1, IC + SmoothCam)
+recorded right-stick transforms while first-person bow pitch normalization had
+`events=0`. At 23:06:47.548 it discarded `engineTargetPitchDelta=8.368969` and held
+the old target (`normalizedTargetPitchDelta=0`, `pitchNormalized=1`). Mouse-only
+normalization lacked input ownership and could override native controller look.
+
+Local fix releases ownership on right-stick events, even when gamepad transforms
+are disabled; left-stick movement does not release it. Mixed-device frames cannot
+calibrate or normalize mouse pitch. Mouse idle frames retain the existing hold.
+Regression replay fails with handoff disabled and preserves the recorded engine
+delta with handoff enabled. In-game fix validation is pending. The reported
+E-mapped trackpad-click snap is not yet conclusively attributed to this defect;
+the sampled log has no keyboard-event correlation. Diagnostic output now includes
+`mouseOwnsPitch`.
+
+### Per-state SKSE Menu/INI overrides (2026-08-14)
+**Implemented in code / unit-tested. Not playtested.** Opt-in per-state X/Y after `ApplyTransform` (global × device). All eight overlays ship `b<State>Disabled=true`. Leave them checked to keep 0.53b feel. Public version is `0.54b`; overlays remain unplaytested.
+
+**Events (exact set).** Walking, Running, Sprinting, Bow pullback/aiming (`DetectBowAim` — bowPull + eagleEye as one overlay), Magic use (`DetectCastingStatesOnly` only), One Hand, Two Handed, Dual Wielding. No separate Eagle Eye page.
+
+**UX / INI.** Each submenu: Disabled (checked default), X, Y, Apply first person, Apply third person. Sections `[Walking]` … `[DualWielding]`. One X/Y pair per state (not a second gamepad copy). `ParseBool` accepts `TRUE`/`FALSE`/`true`/`false`/`1`/`0`.
+
+**Priority (one winner, no stack).** Bow > Magic > Sprint > Dual Wielding > Two Handed > One Hand > Running > Walking. Exact FP/TP only; neither/both person → no overlay.
+
+**Bow.** Overlay enabled replaces `fBowAim*` (does not multiply). Reconstruct X + engine Y still run. Overlay disabled leaves `fBowAim*` as 0.53b. FOV is never a multiplier.
+
+**Detection.** Sprint / walk / run use relocated `ActorState1` (SE 0xC0 / AE 0xC8): `sprinting`, `running`, `walking`, plus `movingForward/Back/Left/Right` so standing still cannot win walk/run. Walk vs run bits are the CommonLib gait flags — **not playtested** as overlay gates. Weapon style uses `GetEquippedObject` + `GetWeaponType` / `TESObjectARMO::IsShield` and relocated drawn state. Bows never classify as Two Handed. Staff without cast is not Magic use.
+
+**Do not reopen.** mount/furniture (transforms already off); sneak/swim/sit (unproven); time-dilation as an input overlay (fights wall-clock yaw); FOV-as-multiplier; `kIronSights`; unrebased `GetAttackState` / `IsSprinting` / `IsRunning`; TP pitch normalize; retagging `ClassifyAimState`; folding into half-rate / timeComp.
+
+**Next.** In-game matrix on `TEST_PLAN.md`.

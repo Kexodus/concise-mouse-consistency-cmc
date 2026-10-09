@@ -27,6 +27,7 @@ CMC has four parts:
   - `outX = dx * global * mouseXAxisMultiplier` (or `gamepadXAxisMultiplier`)
   - `outY = dy * global * mouseYAxisMultiplier` (or `gamepadYAxisMultiplier`)
 - `ApplyTransform` takes an `isGamepad` bool to select the correct multiplier pair
+- Optional per-state overlay scale is a separate multiply after `ApplyTransform` (or, for Bow, a replacement of `fBowAim*` before it). Disabled overlays are no-ops. FOV never scales look input.
 
 Default mouse and gamepad axis multipliers are `1.0`. Users can lower `gamepadYAxisMultiplier` if vertical look feels too fast.
 
@@ -61,6 +62,7 @@ INI path: `Data/SKSE/Plugins/MouseSensitivityFix.ini`
 - `[Advanced]` per-camera gates, menu/look-control guards, focus gap, bow multipliers, and verbose logging
 - `iFocusSpikeGapMs` controls focus-regain suppression from 50 to 5000 ms
 - `[Compatibility]` single `bKeepThirdPersonSmoothingRemovalWithCameraMods` toggle
+- Per-state overlay sections (`[Walking]`, `[Running]`, `[Sprinting]`, `[BowAim]`, `[MagicUse]`, `[OneHand]`, `[TwoHanded]`, `[DualWielding]`): `b<State>Disabled` (default true), `f<State>XSensitivity` / `YSensitivity`, `b<State>ApplyFirstPerson` / `ApplyThirdPerson`
 
 ## Compatibility behavior
 

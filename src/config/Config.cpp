@@ -1,10 +1,12 @@
 #include "MouseSensitivityFix/Config.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <ostream>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -22,7 +24,7 @@ namespace
 {
     constexpr auto kReloadPollInterval = std::chrono::milliseconds(250);
 
-    std::string Trim(const std::string& value)
+    std::string Trim(std::string_view value)
     {
         const auto first = value.find_first_not_of(" \t\r\n");
         if (first == std::string::npos) {
@@ -30,19 +32,17 @@ namespace
         }
 
         const auto last = value.find_last_not_of(" \t\r\n");
-        return value.substr(first, (last - first) + 1);
+        return std::string(value.substr(first, (last - first) + 1));
     }
 
-    bool ParseBool(const std::string& value, bool fallback)
+    std::string FoldAsciiLower(std::string_view value)
     {
-        const auto normalized = Trim(value);
-        if (normalized == "1" || normalized == "true" || normalized == "True") {
-            return true;
+        std::string folded;
+        folded.reserve(value.size());
+        for (const unsigned char ch : value) {
+            folded.push_back(static_cast<char>(std::tolower(ch)));
         }
-        if (normalized == "0" || normalized == "false" || normalized == "False") {
-            return false;
-        }
-        return fallback;
+        return folded;
     }
 
     double ParseDouble(const std::string& value, double fallback)
@@ -70,6 +70,78 @@ namespace
     double FiniteOr(double value, double fallback) noexcept
     {
         return std::isfinite(value) ? value : fallback;
+    }
+
+    double ClampAxisMultiplier(double value, double fallback) noexcept
+    {
+        return std::clamp(FiniteOr(value, fallback), 0.01, 20.0);
+    }
+
+    void ClampStateLookOverride(msf::StateLookOverride& overlay, const msf::StateLookOverride& previous) noexcept
+    {
+        overlay.xSensitivity = ClampAxisMultiplier(overlay.xSensitivity, previous.xSensitivity);
+        overlay.ySensitivity = ClampAxisMultiplier(overlay.ySensitivity, previous.ySensitivity);
+    }
+
+    void WriteBool(std::ostream& output, const std::string& key, bool value)
+    {
+        output << key << '=' << (value ? "true" : "false") << '\n';
+    }
+
+    void WriteStateOverrideSection(
+        std::ostream& output,
+        const char* section,
+        const char* prefix,
+        const char* help,
+        const msf::StateLookOverride& overlay)
+    {
+        output << '\n';
+        output << '[' << section << "]\n";
+        output << help;
+        WriteBool(output, std::string("b") + prefix + "Disabled", overlay.disabled);
+        output << "; Horizontal / vertical overlay scale. Clamp 0.01-20. Shared by mouse and gamepad.\n";
+        output << 'f' << prefix << "XSensitivity=" << overlay.xSensitivity << '\n';
+        output << 'f' << prefix << "YSensitivity=" << overlay.ySensitivity << '\n';
+        WriteBool(output, std::string("b") + prefix + "ApplyFirstPerson", overlay.applyFirstPerson);
+        WriteBool(output, std::string("b") + prefix + "ApplyThirdPerson", overlay.applyThirdPerson);
+    }
+
+    bool TryApplyStateOverrideKey(
+        std::string_view key,
+        std::string_view value,
+        std::string_view prefix,
+        msf::StateLookOverride& overlay)
+    {
+        const auto disabledKey = std::string("b") + std::string(prefix) + "Disabled";
+        const auto xKey = std::string("f") + std::string(prefix) + "XSensitivity";
+        const auto yKey = std::string("f") + std::string(prefix) + "YSensitivity";
+        const auto fpKey = std::string("b") + std::string(prefix) + "ApplyFirstPerson";
+        const auto tpKey = std::string("b") + std::string(prefix) + "ApplyThirdPerson";
+        if (key == disabledKey) {
+            overlay.disabled = msf::ParseBool(value, overlay.disabled);
+            return true;
+        }
+        if (key == xKey) {
+            overlay.xSensitivity = ClampAxisMultiplier(
+                ParseDouble(std::string(value), overlay.xSensitivity),
+                overlay.xSensitivity);
+            return true;
+        }
+        if (key == yKey) {
+            overlay.ySensitivity = ClampAxisMultiplier(
+                ParseDouble(std::string(value), overlay.ySensitivity),
+                overlay.ySensitivity);
+            return true;
+        }
+        if (key == fpKey) {
+            overlay.applyFirstPerson = msf::ParseBool(value, overlay.applyFirstPerson);
+            return true;
+        }
+        if (key == tpKey) {
+            overlay.applyThirdPerson = msf::ParseBool(value, overlay.applyThirdPerson);
+            return true;
+        }
+        return false;
     }
 
     void WriteIniContents(std::ostream& output, const msf::ConfigValues& values)
@@ -121,6 +193,65 @@ namespace
         output << "; When false, CMC skips third-person smoothing intervention if either camera mod is present.\n";
         output << "bKeepThirdPersonSmoothingRemovalWithCameraMods="
                << (values.keepThirdPersonSmoothingRemovalWithCameraMods ? "true" : "false") << "\n";
+
+        constexpr auto kDisabledDefaultHelp =
+            "; Disabled=true (default) keeps 0.53b feel for this event. Uncheck / set false to apply X/Y.\n"
+            "; Exact first- or third-person only. Neither/both person flags skip the overlay. FOV is never a multiplier.\n";
+        WriteStateOverrideSection(
+            output,
+            "Walking",
+            "Walking",
+            kDisabledDefaultHelp,
+            values.walking);
+        WriteStateOverrideSection(
+            output,
+            "Running",
+            "Running",
+            kDisabledDefaultHelp,
+            values.running);
+        WriteStateOverrideSection(
+            output,
+            "Sprinting",
+            "Sprinting",
+            kDisabledDefaultHelp,
+            values.sprinting);
+        WriteStateOverrideSection(
+            output,
+            "BowAim",
+            "BowAim",
+            "; Bow pullback/aiming, including Eagle Eye frames that are still bowAim.\n"
+            "; Disabled=true (default) leaves fBowAim* exactly as 0.53b.\n"
+            "; Enabled replaces fBowAim* for this event (does not multiply 0.35x0.35). Reconstruct X + engine Y still run.\n"
+            "; Exact first- or third-person only. FOV is never a multiplier.\n",
+            values.bowAim);
+        WriteStateOverrideSection(
+            output,
+            "MagicUse",
+            "MagicUse",
+            "; Charging/casting only (not merely a spell or staff equipped).\n"
+            "; Disabled=true (default) keeps 0.53b feel. FOV is never a multiplier.\n",
+            values.magicUse);
+        WriteStateOverrideSection(
+            output,
+            "OneHand",
+            "OneHand",
+            "; One-handed weapon in use; other hand empty or shield. Not bow/staff/two-hander.\n"
+            "; Disabled=true (default) keeps 0.53b feel. FOV is never a multiplier.\n",
+            values.oneHand);
+        WriteStateOverrideSection(
+            output,
+            "TwoHanded",
+            "TwoHanded",
+            "; Two-handed melee (greatsword/battleaxe/warhammer). Not bow, staff, or dual wield.\n"
+            "; Disabled=true (default) keeps 0.53b feel. FOV is never a multiplier.\n",
+            values.twoHanded);
+        WriteStateOverrideSection(
+            output,
+            "DualWielding",
+            "DualWielding",
+            "; One-handed weapons in both hands, drawn. Disabled=true (default) keeps 0.53b feel.\n"
+            "; FOV is never a multiplier.\n",
+            values.dualWielding);
     }
 
     bool ReplaceFileAtomically(
@@ -271,6 +402,15 @@ namespace msf
                 loaded.bowAimGamepadXMultiplier = std::clamp(ParseDouble(value, loaded.bowAimGamepadXMultiplier), 0.01, 20.0);
             } else if (key == "fBowAimGamepadYMultiplier") {
                 loaded.bowAimGamepadYMultiplier = std::clamp(ParseDouble(value, loaded.bowAimGamepadYMultiplier), 0.01, 20.0);
+            } else if (
+                TryApplyStateOverrideKey(key, value, "Walking", loaded.walking) ||
+                TryApplyStateOverrideKey(key, value, "Running", loaded.running) ||
+                TryApplyStateOverrideKey(key, value, "Sprinting", loaded.sprinting) ||
+                TryApplyStateOverrideKey(key, value, "BowAim", loaded.bowAim) ||
+                TryApplyStateOverrideKey(key, value, "MagicUse", loaded.magicUse) ||
+                TryApplyStateOverrideKey(key, value, "OneHand", loaded.oneHand) ||
+                TryApplyStateOverrideKey(key, value, "TwoHanded", loaded.twoHanded) ||
+                TryApplyStateOverrideKey(key, value, "DualWielding", loaded.dualWielding)) {
             }
         }
 
@@ -401,24 +541,32 @@ namespace msf
 
         auto normalized = updatedValues;
         normalized.focusSpikeGapMs = ClampFocusSpikeGapMs(normalized.focusSpikeGapMs);
-        normalized.globalSensitivity = std::clamp(
-            FiniteOr(normalized.globalSensitivity, previous.globalSensitivity), 0.01, 20.0);
-        normalized.mouseXAxisMultiplier = std::clamp(
-            FiniteOr(normalized.mouseXAxisMultiplier, previous.mouseXAxisMultiplier), 0.01, 20.0);
-        normalized.mouseYAxisMultiplier = std::clamp(
-            FiniteOr(normalized.mouseYAxisMultiplier, previous.mouseYAxisMultiplier), 0.01, 20.0);
-        normalized.gamepadXAxisMultiplier = std::clamp(
-            FiniteOr(normalized.gamepadXAxisMultiplier, previous.gamepadXAxisMultiplier), 0.01, 20.0);
-        normalized.gamepadYAxisMultiplier = std::clamp(
-            FiniteOr(normalized.gamepadYAxisMultiplier, previous.gamepadYAxisMultiplier), 0.01, 20.0);
-        normalized.bowAimMouseXMultiplier = std::clamp(
-            FiniteOr(normalized.bowAimMouseXMultiplier, previous.bowAimMouseXMultiplier), 0.01, 20.0);
-        normalized.bowAimMouseYMultiplier = std::clamp(
-            FiniteOr(normalized.bowAimMouseYMultiplier, previous.bowAimMouseYMultiplier), 0.01, 20.0);
-        normalized.bowAimGamepadXMultiplier = std::clamp(
-            FiniteOr(normalized.bowAimGamepadXMultiplier, previous.bowAimGamepadXMultiplier), 0.01, 20.0);
-        normalized.bowAimGamepadYMultiplier = std::clamp(
-            FiniteOr(normalized.bowAimGamepadYMultiplier, previous.bowAimGamepadYMultiplier), 0.01, 20.0);
+        normalized.globalSensitivity = ClampAxisMultiplier(
+            normalized.globalSensitivity, previous.globalSensitivity);
+        normalized.mouseXAxisMultiplier = ClampAxisMultiplier(
+            normalized.mouseXAxisMultiplier, previous.mouseXAxisMultiplier);
+        normalized.mouseYAxisMultiplier = ClampAxisMultiplier(
+            normalized.mouseYAxisMultiplier, previous.mouseYAxisMultiplier);
+        normalized.gamepadXAxisMultiplier = ClampAxisMultiplier(
+            normalized.gamepadXAxisMultiplier, previous.gamepadXAxisMultiplier);
+        normalized.gamepadYAxisMultiplier = ClampAxisMultiplier(
+            normalized.gamepadYAxisMultiplier, previous.gamepadYAxisMultiplier);
+        normalized.bowAimMouseXMultiplier = ClampAxisMultiplier(
+            normalized.bowAimMouseXMultiplier, previous.bowAimMouseXMultiplier);
+        normalized.bowAimMouseYMultiplier = ClampAxisMultiplier(
+            normalized.bowAimMouseYMultiplier, previous.bowAimMouseYMultiplier);
+        normalized.bowAimGamepadXMultiplier = ClampAxisMultiplier(
+            normalized.bowAimGamepadXMultiplier, previous.bowAimGamepadXMultiplier);
+        normalized.bowAimGamepadYMultiplier = ClampAxisMultiplier(
+            normalized.bowAimGamepadYMultiplier, previous.bowAimGamepadYMultiplier);
+        ClampStateLookOverride(normalized.walking, previous.walking);
+        ClampStateLookOverride(normalized.running, previous.running);
+        ClampStateLookOverride(normalized.sprinting, previous.sprinting);
+        ClampStateLookOverride(normalized.bowAim, previous.bowAim);
+        ClampStateLookOverride(normalized.magicUse, previous.magicUse);
+        ClampStateLookOverride(normalized.oneHand, previous.oneHand);
+        ClampStateLookOverride(normalized.twoHanded, previous.twoHanded);
+        ClampStateLookOverride(normalized.dualWielding, previous.dualWielding);
 
         ChangeCallback callback;
         {
@@ -441,5 +589,17 @@ namespace msf
     int ClampFocusSpikeGapMs(int value) noexcept
     {
         return std::clamp(value, 50, 5000);
+    }
+
+    bool ParseBool(std::string_view value, bool fallback)
+    {
+        const auto folded = FoldAsciiLower(Trim(value));
+        if (folded == "1" || folded == "true") {
+            return true;
+        }
+        if (folded == "0" || folded == "false") {
+            return false;
+        }
+        return fallback;
     }
 }

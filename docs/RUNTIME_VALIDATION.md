@@ -10,7 +10,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 |---|---|---|---|
 | `1.5.97` | Steam SE | Pending | Runtime is not installed in the current test environment. |
 | `1.6.640` | Steam AE | Pending | Runtime is not installed in the current test environment. |
-| `1.6.1170` | Steam AE | Passed `0.53b` playtest; `0.53.2` load 2026-08-31 | 2026-08-14 session, SKSE 2.2.6 / runtime `01064920` (1.6.1170), ImprovedCamera+SmoothCam. Clean load, all hooks installed, no CMC errors or CrashLogger dump. Settled Eagle Eye `timeMult=0.250 timeComp=1 mode=scale yawRatioToFreelook=0.997`; transitions used `YawTimeCompWallRewrite` not skip. Casting orphan half-rate restore kept `freelookYawPerLook≈0.052`. 2026-08-31 static-md rebuild loaded on SKSE 2.2.8 (handle 139, no error 126). See playtest evidence below. |
+| `1.6.1170` | Steam AE | Passed `0.53b` playtest; `0.53.2` load 2026-08-31; `0.54b.1` boot + in-world 2026-09-02 | 2026-08-14: SKSE 2.2.6, IC+SmoothCam, settled Eagle Eye `timeMult=0.250 timeComp=1`. 2026-08-31: NG v7 `x64-windows` failed SKSE 126 (spdlog/fmt); `0.53.2` static-md loaded (handle 139, no 126). 2026-09-02: `0.54b` (`bytes=715776`) CTD'd ~17s after D3D with `_purecall` from Load-time Menu Framework registration; `0.54b.1` PostLoad deferral (`bytes=717312`) reached D3D/ImGui with no abort and all in-world hooks fired. 2026-10-07: controller-handoff build (`bytes=719360`) clean init on SKSE 2.2.8 with IC+SmoothCam; three same-day CrashLogger reports were `po3_DialogueHistory.dll` `filesystem_error` in its `OnInit`, no CMC frames. Controller pitch handoff in-game check pending. |
 | `1.7.99` | Steam AE | Pending | Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-99-0.bin`). Not playtested. |
 | `1.7.104` | Steam AE | Pending | Latest Steam AE. Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-104-0.bin`). Not playtested. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
@@ -100,6 +100,25 @@ The NG v7 `0.53.1` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 12
 - Deployed MO2 DLL SHA-256 matched `build-commonlib/Release/MouseSensitivityFix.dll`: `686306B12442810022F9B43DAACDADBD1B62A67C3F681867662D029B82206069`. `dumpbin /dependents` listed CRT/system DLLs only — no `spdlog.dll` / `fmt.dll`.
 - This is a load/smoke confirmation of the static-md fix, not a replay of the 2026-08-14 gameplay matrix. Version `0.53.2` is that same payload plus the ZIP no longer embedding README/CHANGELOG.
 - Shipped DLL: 698,880 bytes, SHA-256 `E68D9D03B40699B0C897682B01EF85E4BF6A7D75240C35BF975E9759478A206D` (version-string bump from the 14:28 playtest binary). ZIP `Concise-Mouse-Consistency-0.53.2.zip`: 308,899 bytes, SHA-256 `E0AE80AADCE246FDF73D83D50A417FE4F825D9897CE068B764B24D493FE588DD`. Archive contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`. Packaged INI has `bVerboseLogging=false`. Deployed MO2 DLL matches the shipped hash.
+
+### 2026-09-02 `0.54b.1` PostLoad UI deferral (Steam `1.6.1170` / SKSE 2.2.8)
+
+- `0.54b` registered Menu Framework pages via `LoadLibraryA` during `SKSEPlugin_Load` and abort-CTD'd ~17s after D3D (`ucrtbase` `_purecall`, no CMC frames).
+- `0.54b.1` (`bytes=717312`) deferred registration to PostLoad + `GetModuleHandle`: `Deferred SKSE Menu Framework registration until PostLoad`, `UI Bridge initialized`, D3D/ImGui with no abort, no CrashLogger report. In-world first calls for `FirstPersonState::Update`, `PlayerCharacter::ModifyMovementData`, `LookHandler::ProcessMouseMove` (1.6 vtable 2/3). Compat `mode=0`.
+
+### 2026-10-07 controller-handoff build (Steam `1.6.1170` / SKSE 2.2.8)
+
+- MO2 DLL `bytes=719360` (`141968f` build): `BuildIdentity version=0.54b.1`, `ImprovedCamera=yes SmoothCam=yes`, all hooks installed, PostLoad UI registration, `Initialization complete`. No CMC errors or warnings.
+- Three CrashLogger reports that day (14:58, 15:00, 15:19) were `std::filesystem::filesystem_error` thrown from `po3_DialogueHistory.dll` `OnInit`; CMC appears only in the module list.
+- Right-stick release of mouse pitch ownership still needs a dedicated in-game check.
+
+### 2026-10-09 `1.0.1` release package
+
+- Beta merged with main (0.53.1 / 0.53.2 / unit-test mtime fix) plus the third-person sprint yaw fix. Plugin build and unit tests passed; PR CI passed for the pre-fix candidate.
+- Third-person sprint yaw fix playtested on Steam 1.6.1170 / SKSE 2.2.8 / IC+SmoothCam (DLL `B7E8A1E1...`, same source): `thirdPerson=1 sprinting=1 halfRate=1 observedScale=0.500`, `yawRatioToFreelook` about 1.0; user confirmed feel. See `research.md`.
+- DLL: 719,360 bytes, SHA-256 `F1EDCA26DA28DC28C42CE4915D94DE11661D76173B426E3A4E4E4FD072E6F1A6` (playtested source plus the 1.0.1 version bump). No `spdlog.dll` / `fmt.dll` imports. Deployed MO2 DLL matches.
+- ZIP `Concise-Mouse-Consistency-1.0.1.zip`: 317,719 bytes, SHA-256 `664A66D843B4AB6031939E2075A55A08ECBC477BD7C6FD30C84B007E7AD3B946`. Contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
+- Right-stick pitch handoff in-game check is still pending.
 
 ## Evidence required for a pass
 

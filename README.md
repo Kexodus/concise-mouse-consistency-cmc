@@ -10,6 +10,7 @@
 - Selective first-person half-rate yaw restoration while looking (sprint, bow aim, and other measured 0.5× states such as casting)
 - Wall-clock yaw compensation during slow-time (Eagle Eye and similar) in first- and third-person
 - Optional third-person smoothing removal
+- Opt-in per-state look overlays (walking, running, sprinting, bow aim, magic, one-hand, two-handed, dual wielding); all ship disabled
 - Optional gamepad look (right-stick) transforms
 - Alt-tab focus-spike suppression
 - Live INI reload and runtime-safe enable/disable (hooks stay installed; disabled features pass through)
@@ -39,7 +40,7 @@ cmake --build --preset plugin-release --target package
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-0.53.2.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-1.0.1.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.
