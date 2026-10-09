@@ -6,6 +6,9 @@ Cross-session findings. Read before re-investigating hooks, compatibility, or se
 
 ## Works
 
+### Third-person sprint carries the same 0.5 yaw movementScale (2026-10-09)
+End-user report (Skyrim 1.5.97): first-person sprint felt fixed, third-person sprint did not. Half-rate restore was exclusive-FP only, and the verbose `YawRotation` probe only sampled FP, so TP sprint had never been measured. A TP-sampling probe on Steam 1.6.1170 / SKSE 2.2.8 with IC+SmoothCam (`BuildIdentity version=0.54`, 12:10-12:13): TP sprint frames with horizontal input logged `observedScale=0.500` with `yawPerLook≈0.0126-0.0141` against `freelookYawPerLook≈0.026-0.027` (11 of 13 sprint samples; the rest were one zero-X frame and one `1.0` transition frame). TP walking frames all logged `≈1.0`. TP standing look logged `rotYawEngine=0` (camera orbit, not player yaw), so the band never fires there. Fix: exclusive TP is half-rate eligible only while `sprinting` (sprint hint applies on the first in-band hit). TP bow and casting remain uncorrected because they were not measured. In-game feel validation of the fix is pending.
+
 ### Menu Framework pages at PostLoad via GetModuleHandle (2026-09-02)
 Do not `LoadLibraryA` `SKSEMenuFramework.dll` during `SKSEPlugin_Load`. Register SKSE's PostLoad listener, then `GetModuleHandle` a DLL SKSE already loaded. Steam 1.6.1170 / SKSE 2.2.8 / IC+SmoothCam playtest: `BuildIdentity` `bytes=717312`, `Deferred SKSE Menu Framework registration until PostLoad` at 12:49:13, `UI Bridge initialized` at 12:49:14 (SKSE message type 0 to handle 139), then D3D/ImGui at 12:49:39 with no `_purecall` abort. In-world: `Hook first call:` `FirstPersonState::Update`, `PlayerCharacter::ModifyMovementData`, `LookHandler::ProcessMouseMove` (1.6 vtable 2/3). No CrashLogger report. 1.7.99+ LookHandler 4/5 still untested. Compat stayed `mode=0` (keep TP smoothing removal).
 

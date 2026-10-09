@@ -907,15 +907,35 @@ namespace
                 CHECK(policy.compensateTimeYaw == dilated);
             }
 
-            // TP sprint looking — sprint does not unlock half-rate outside FP
+            // TP sprint looking — measured 0.5 movementScale, half-rate eligible
             {
                 const auto policy = msf::EvaluateLookCorrectionPolicy(
                     MakeLookContext(false, true, true, false, true, timeMult),
                     true,
                     true,
                     true);
-                CHECK(!policy.restoreHalfRateYaw);
+                CHECK(policy.restoreHalfRateYaw);
                 CHECK(policy.compensateTimeYaw == dilated);
+            }
+
+            // TP sprint idle (not looking) — no half-rate
+            {
+                const auto policy = msf::EvaluateLookCorrectionPolicy(
+                    MakeLookContext(false, true, true, false, false, timeMult),
+                    true,
+                    true,
+                    true);
+                CHECK(!policy.restoreHalfRateYaw);
+            }
+
+            // TP sprint with the TP hook disabled — no half-rate
+            {
+                const auto policy = msf::EvaluateLookCorrectionPolicy(
+                    MakeLookContext(false, true, true, false, true, timeMult),
+                    true,
+                    true,
+                    false);
+                CHECK(!policy.restoreHalfRateYaw);
             }
 
             // Neither camera — no half-rate, no timeComp

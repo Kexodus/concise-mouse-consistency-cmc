@@ -2147,13 +2147,15 @@ namespace msf
         }
 
         // Measurement-driven: exclusive FP + looking. Sprint/bow/casting are telemetry only.
+        // Exclusive TP is eligible only while sprinting (measured 0.5 on 2026-10-09);
+        // TP bow/casting keep engine and camera-mod deltas.
         // Both-true person flags must not unlock half-rate or timeComp.
         const bool exclusiveFirstPerson = ctx.firstPerson && !ctx.thirdPerson;
         const bool exclusiveThirdPerson = ctx.thirdPerson && !ctx.firstPerson;
         policy.restoreHalfRateYaw =
-            exclusiveFirstPerson &&
-            enableFirstPersonHook &&
-            ctx.looking;
+            ctx.looking &&
+            ((exclusiveFirstPerson && enableFirstPersonHook) ||
+             (exclusiveThirdPerson && enableThirdPersonHook && ctx.sprinting));
 
         const bool cameraHookEnabled =
             (exclusiveFirstPerson && enableFirstPersonHook) ||
