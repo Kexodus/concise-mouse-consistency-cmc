@@ -112,12 +112,13 @@ The NG v7 `0.53.1` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 12
 - Three CrashLogger reports that day (14:58, 15:00, 15:19) were `std::filesystem::filesystem_error` thrown from `po3_DialogueHistory.dll` `OnInit`; CMC appears only in the module list.
 - Right-stick release of mouse pitch ownership still needs a dedicated in-game check.
 
-### 2026-10-08 `0.54` release candidate package
+### 2026-10-09 `0.54` release package
 
-- Beta merged with main (0.53.1 / 0.53.2 / unit-test mtime fix). Plugin build and unit tests passed.
-- DLL: 719,360 bytes, SHA-256 `34684FB358A5E2A44D7B297EB152809A942C65DF0F8509571DC5FDD09F77B061`. No `spdlog.dll` / `fmt.dll` imports.
-- ZIP `Concise-Mouse-Consistency-0.54.zip`: 317,648 bytes, SHA-256 `4278802CF94CB3F103A919ED10A8B0AB31D40CF2C6D8E0F2249B8A2FCBB94BEC`. Contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
-- In-game check of right-stick pitch handoff with this DLL is pending before publishing.
+- Beta merged with main (0.53.1 / 0.53.2 / unit-test mtime fix) plus the third-person sprint yaw fix. Plugin build and unit tests passed; PR CI passed for the pre-fix candidate.
+- Third-person sprint yaw fix playtested on Steam 1.6.1170 / SKSE 2.2.8 / IC+SmoothCam (DLL `B7E8A1E1...`, same source): `thirdPerson=1 sprinting=1 halfRate=1 observedScale=0.500`, `yawRatioToFreelook` about 1.0; user confirmed feel. See `research.md`.
+- DLL: 719,360 bytes, SHA-256 `F076CB092082B7D466B61E283D70F839364C94A2127B4D9BF5B2E99572CDE1FE` (rebuild of the playtested source). No `spdlog.dll` / `fmt.dll` imports. Deployed MO2 DLL matches.
+- ZIP `Concise-Mouse-Consistency-0.54.zip`: 317,730 bytes, SHA-256 `6EF725852D4E08F3E527AAE93F883007FAD87D43998D15170A08A9EDD1A91161`. Contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
+- Right-stick pitch handoff in-game check is still pending.
 
 ## Evidence required for a pass
 

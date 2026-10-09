@@ -2,16 +2,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Third-person sprint now gets the same full-rate horizontal look as first-person sprint. Skyrim halves sprint turn speed in both views; CMC previously restored it only in first person. Measured and playtested on 1.6.1170; the same engine path applies on 1.5.97.
-
-## [0.54] - 2026-10-08
+## [0.54] - 2026-10-09
 
 Promotes the 0.54b beta line to the public release. Includes everything in 0.54b and 0.54b.1 below.
 
 ### Fixed
 
+- Third-person sprint now gets the same full-rate horizontal look as first-person sprint. Skyrim halves sprint turn speed in both views; CMC previously restored it only in first person. Measured and playtested on 1.6.1170; the same engine path applies on 1.5.97.
 - First-person mouse pitch correction releases control when right-stick look is used, preventing it from holding the camera's pitch during controller bow use. Mixed mouse/controller frames no longer calibrate the mouse pitch baseline.
 
 ### Changed
