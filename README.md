@@ -79,3 +79,4 @@ See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests. Do 
 - `docs/RUNTIME_VALIDATION.md`
 - `docs/PUBLISHING.md`
 - `docs/research.md`
+- `presskit/README.md` (Nexus page art and copy-paste BBCode)
