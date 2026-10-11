@@ -40,7 +40,7 @@ cmake --build --preset plugin-release --target package
 Outputs:
 
 - DLL: `build-commonlib/Release/MouseSensitivityFix.dll`
-- ZIP: `build-commonlib/Concise-Mouse-Consistency-1.0.1.zip`
+- ZIP: `build-commonlib/Concise-Mouse-Consistency-1.0.2.zip`
 
 Run dependency-free unit tests with `cmake --preset unit-tests`, `cmake --build --preset unit-tests`, and `ctest --preset unit-tests`.
 Full setup, packaging, and troubleshooting steps are in `docs/SETUP_AND_BUILD.md`.
@@ -62,7 +62,7 @@ The codebase produces one CommonLibSSE-NG multi-runtime DLL. Runtime validation 
 - `1.6.1170` (Steam AE)
 - `1.7.99` / `1.7.104` (Steam AE 1.7; SKSE 2.3.1 + Address Library v5)
 - latest supported GOG build
-- VR
+- VR: not supported; CMC refuses to load on Skyrim VR
 
 See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests. Do not treat a successful build as in-game proof for an untested runtime.
 

@@ -14,7 +14,7 @@ CommonLibSSE-NG produces one multi-runtime DLL, but a successful build is not an
 | `1.7.99` | Steam AE | Pending | Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-99-0.bin`). Not playtested. |
 | `1.7.104` | Steam AE | Pending | Latest Steam AE. Requires SKSE 2.3.1 and Address Library format 5 (`versionlib-1-7-104-0.bin`). Not playtested. |
 | Latest supported GOG | GOG | Pending | No GOG runtime is installed in the current test environment. |
-| VR | Steam VR | Pending | No VR runtime is installed in the current test environment. Do not advertise validated VR support until this row passes. |
+| VR | Steam VR | Unsupported | From 1.0.2, `SKSEPlugin_Query`/`SKSEPlugin_Load` return false on VR (`REL::Module::IsVR()`). The hooks write flat-runtime vtable slots; VR shifts `FirstPersonState::Update` 3→4, `ThirdPersonState::HandleLookInput` 0x0F→0x10, and `ModifyMovementData` 0x11A→0x11C. Supporting VR needs per-runtime slots and a VR playtest. |
 
 ## Build evidence
 
@@ -119,6 +119,14 @@ The NG v7 `0.53.1` dynamic-triplet DLL failed SKSE `LoadLibrary` with Windows 12
 - DLL: 719,360 bytes, SHA-256 `F1EDCA26DA28DC28C42CE4915D94DE11661D76173B426E3A4E4E4FD072E6F1A6` (playtested source plus the 1.0.1 version bump). No `spdlog.dll` / `fmt.dll` imports. Deployed MO2 DLL matches.
 - ZIP `Concise-Mouse-Consistency-1.0.1.zip`: 317,719 bytes, SHA-256 `664A66D843B4AB6031939E2075A55A08ECBC477BD7C6FD30C84B007E7AD3B946`. Contains only `Data/SKSE/Plugins/MouseSensitivityFix.dll` and `MouseSensitivityFix.ini`; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
 - Right-stick pitch handoff in-game check is still pending.
+
+### 2026-10-10 `1.0.2` VR load guard
+
+- Only change from 1.0.1: `SKSEPlugin_Query` and `SKSEPlugin_Load` return false on Skyrim VR and log the reason. SE/AE/GOG take the same path as 1.0.1. Plugin build and unit tests passed.
+- VR slot shifts confirmed in the NG v7 source: `Actor::ModifyMovementData` `RelocateVirtual(0x11A, 0x11C)`, `TESCameraState::Update` `03/04`, `ThirdPersonState::HandleLookInput` `0F/10`.
+- DLL: 719,360 bytes, SHA-256 `D88600000C5BB06F8221C7D19C40F142F1B3FF5529F506063EF2F8743DFB236E`. No `spdlog.dll` / `fmt.dll` imports. Deployed MO2 DLL matches.
+- ZIP `Concise-Mouse-Consistency-1.0.2.zip`: 317,069 bytes, SHA-256 `FAFDC25B74BC041AF811B15E8BB98AB878F824EB1B4A54A6553F4E48AC149973`. Contains only the DLL and INI; packaged INI has `bVerboseLogging=false`. Extracted DLL matches the build output.
+- Not yet checked in game: clean 1.0.2 startup on 1.6.1170 (`BuildIdentity` 1.0.2). There is no VR runtime available to test the refusal itself.
 
 ## Evidence required for a pass
 

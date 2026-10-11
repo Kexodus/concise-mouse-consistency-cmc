@@ -58,7 +58,7 @@ The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-06-compatibility.png[/img]
 
 [list]
-[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170. [b]Skyrim VR is not supported. Do not install CMC on VR.[/b]
+[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170. [b]Skyrim VR is not supported.[/b] From 1.0.2, CMC refuses to load on VR.
 [*][b]SmoothCam / Improved Camera:[/b] compatible. CMC detects them. By default it still removes third-person smoothing; turn [i]Keep third-person smoothing removal with camera mods[/i] off to leave smoothing to the camera mod.
 [*][b]Other mouse or sensitivity mods:[/b] anything else that edits look input can stack with CMC. Use one or the other.
 [/list]
@@ -73,6 +73,11 @@ The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[
 [/list]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-08-changelog.png[/img]
+
+[b]1.0.2[/b]
+[list]
+[*]CMC now refuses to load on Skyrim VR instead of hooking the wrong game functions. Nothing changes on SE, AE or GOG.
+[/list]
 
 [b]1.0.1[/b]
 [list]

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Concise Mouse Consistency (CMC)** — a DLL-only SKSE64 plugin (C++23) for Skyrim SE/AE/GOG/VR. No ESP required. Built on CommonLibSSE-NG for multi-runtime support.
+**Concise Mouse Consistency (CMC)** — a DLL-only SKSE64 plugin (C++23) for Skyrim SE/AE/GOG. VR is refused at load (hooks use flat-runtime vtable slots). No ESP required. Built on CommonLibSSE-NG for multi-runtime support.
 
 ## Build
 
