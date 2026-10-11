@@ -33,7 +33,7 @@ Validate in-game startup and input behavior on targeted runtimes:
 - `1.6.1170` (Steam AE / SKSE 2.2.6)
 - `1.7.99` / `1.7.104` (Steam AE / SKSE 2.3.1 + Address Library v5)
 - latest supported GOG build
-- VR if the release advertises VR support
+- VR: unsupported; confirm the VR guard in `src/main.cpp` is still in place
 
 Minimum checks:
 

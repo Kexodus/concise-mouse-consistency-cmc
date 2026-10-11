@@ -1,6 +1,6 @@
 # Concise Mouse Consistency (CMC)
 
-Release **1.0.1**.
+Release **1.0.2**.
 
 CMC is a DLL-only SKSE plugin that keeps mouse and gamepad look sensitivity consistent across Skyrim camera states.
 
@@ -26,3 +26,5 @@ Requirements:
 - `bVerboseLogging=false` is the release default. Enable it only when troubleshooting; sampled counters and rendered-frustum diagnostics are written to `MouseSensitivityFix.log`.
 
 CMC requires no ESP, ESL, or ESM and does not consume a load-order slot.
+
+Skyrim VR is not supported. On VR, CMC refuses to load and logs why.

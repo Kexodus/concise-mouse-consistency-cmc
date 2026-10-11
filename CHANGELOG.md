@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-10
+
+### Fixed
+
+- CMC now refuses to load on Skyrim VR and logs why. VR places `FirstPersonState::Update`, `ThirdPersonState::HandleLookInput`, and `PlayerCharacter::ModifyMovementData` one or two vtable slots later than SE/AE, so the flat-runtime hooks would have overwritten unrelated functions. SE, AE, and GOG behavior is unchanged.
+
+### Docs
+
+- Removed the VR compatibility claims from the 0.54b and 0.53.2 entries below. VR was never validated.
+
 ## [1.0.1] - 2026-10-09
 
 Promotes the 0.54b beta line to the public release as 1.0.1. Includes everything in 0.54b and 0.54b.1 below.
@@ -33,7 +43,7 @@ Promotes the 0.54b beta line to the public release as 1.0.1. Includes everything
 
 ### Changed
 
-- One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG / VR compatibility.
+- One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG compatibility. (VR was listed here in error; see 1.0.2.)
 - CommonLibSSE-NG is consumed from an overlay port of [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0` (`8b032fa`) instead of the stale colorglass / CharmedBaryon 3.5.3 pin.
 
 ### Fixed
@@ -59,7 +69,7 @@ Promotes the 0.54b beta line to the public release as 1.0.1. Includes everything
 
 ### Changed
 
-- 1.7 loadability / Address Library v5 compat build of 0.53 gameplay. One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG / VR. Look behavior is unchanged from 0.53.
+- 1.7 loadability / Address Library v5 compat build of 0.53 gameplay. One SKSE DLL now declares Address Library v5 so SKSE 2.3.1 can load CMC on Skyrim 1.7.99 and 1.7.104, while keeping SE / 1.6.x AE / GOG (VR was listed here in error; see 1.0.2). Look behavior is unchanged from 0.53.
 - CommonLibSSE-NG is consumed from an overlay port of [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) `v7.0.0` (`8b032fa`) instead of the stale colorglass / CharmedBaryon 3.5.3 pin.
 
 ### Tests / Docs
