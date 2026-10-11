@@ -141,5 +141,5 @@ Free software under the GNU General Public License v3.0 or later, as CommonLibSS
 [*]Thiago099 and QTR-Modding: [url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url]
 [/list]
 
-[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-divider-1200x48.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-divider-1200x48.png?v=2[/img]
 [url=https://github.com/Kexodus/concise-mouse-consistency-cmc]github.com/Kexodus/concise-mouse-consistency-cmc[/url][/center]

@@ -76,7 +76,7 @@ The BBCode file already uses these, in the same section order as the IHarvest NG
 | [`desc-header.png`](nexus/desc-header.png) | 1920×528 |
 | [`desc-look-speed.png`](nexus/desc-look-speed.png) | 1920×1128 |
 | `section-*.png` | 1200×136 |
-| [`cmc-divider-1200x48.png`](nexus/cmc-divider-1200x48.png) | 1200×48, mark only |
+| [`cmc-divider-1200x48.png`](nexus/cmc-divider-1200x48.png) | 1200×48, mark between two rules |
 
 ![Features](nexus/section-01-features.png)
 ![How it works](nexus/section-02-how-it-works.png)

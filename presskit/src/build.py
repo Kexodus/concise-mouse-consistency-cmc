@@ -167,9 +167,10 @@ def section(title: str) -> str:
 
 def divider() -> str:
     css = """
-    .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 22px; }
+    .rule { width: 260px; }
     """
-    return page(f'<div class="wrap">{mark(32)}</div>', css)
+    return page(f'<div class="wrap"><div class="rule"></div>{mark(32)}<div class="rule"></div></div>', css)
 
 
 def states() -> str:
