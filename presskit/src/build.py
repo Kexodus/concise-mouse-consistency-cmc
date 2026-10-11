@@ -228,9 +228,10 @@ def features() -> str:
     return page(f'<div class="wrap"><div class="grid">{grid}</div></div>', css)
 
 
+# Same order as the IHarvest NG page.
 SECTIONS = [
-    "About", "Features", "Requirements", "Installation", "Configuration",
-    "Compatibility", "Known limits", "Changelog", "Support", "Credits",
+    "Features", "How it works", "Requirements", "Installation", "Settings",
+    "Compatibility", "FAQ", "Changelog", "Support", "Permissions", "Credits",
 ]
 
 
@@ -244,7 +245,6 @@ def jobs() -> list[tuple[str, str, int, int]]:
         ("cmc-gallery-look-speed-1920x1080.png", states(), 1920, 1080),
         # Description (BBCode): framed cards on transparent canvases.
         ("desc-header.png", framed(header(), CARD_LARGE), 1920, 528),
-        ("desc-features.png", framed(features(), CARD_LARGE), 1920, 640),
         ("desc-look-speed.png", framed(states(), CARD_LARGE), 1920, 1128),
         ("cmc-divider-1200x48.png", transparent(divider()), 1200, 48),
     ]

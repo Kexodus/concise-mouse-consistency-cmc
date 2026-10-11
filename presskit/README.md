@@ -32,26 +32,26 @@ Upload these on the Nexus **Images** tab. Set the thumbnail as the mod's **Prima
 
 ## Description images
 
-The BBCode file already uses these. Each sits in a rounded card with a faint edge and a soft shadow, on a transparent PNG, so it blends into the Nexus page. The gallery uploads above stay full-bleed.
+The BBCode file already uses these, in the same section order as the IHarvest NG page. Each sits in a rounded card with a faint edge and a soft shadow, on a transparent PNG, so it blends into the Nexus page. The gallery uploads above stay full-bleed.
 
 | Image | Size |
 |---|---|
 | [`desc-header.png`](nexus/desc-header.png) | 1920×528 |
 | [`desc-look-speed.png`](nexus/desc-look-speed.png) | 1920×1128 |
-| [`desc-features.png`](nexus/desc-features.png) | 1920×640 |
 | `section-*.png` | 1200×136 |
 | [`cmc-divider-1200x48.png`](nexus/cmc-divider-1200x48.png) | 1200×48, mark only |
 
-![About](nexus/section-01-about.png)
-![Features](nexus/section-02-features.png)
+![Features](nexus/section-01-features.png)
+![How it works](nexus/section-02-how-it-works.png)
 ![Requirements](nexus/section-03-requirements.png)
 ![Installation](nexus/section-04-installation.png)
-![Configuration](nexus/section-05-configuration.png)
+![Settings](nexus/section-05-settings.png)
 ![Compatibility](nexus/section-06-compatibility.png)
-![Known limits](nexus/section-07-known-limits.png)
+![FAQ](nexus/section-07-faq.png)
 ![Changelog](nexus/section-08-changelog.png)
 ![Support](nexus/section-09-support.png)
-![Credits](nexus/section-10-credits.png)
+![Permissions](nexus/section-10-permissions.png)
+![Credits](nexus/section-11-credits.png)
 ![Divider](nexus/cmc-divider-1200x48.png)
 
 ## Logo files

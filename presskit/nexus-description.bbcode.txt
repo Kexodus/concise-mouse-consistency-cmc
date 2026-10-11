@@ -1,77 +1,107 @@
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-header.png[/img]
 
-[size=4][color=#f2eeea]One look speed in every camera state.[/color][/size][/center]
+[size=4][i]One look speed in every camera state.[/i][/size]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-01-about.png[/img]
+Sprinting, drawing a bow and casting no longer slow your camera down.[/center]
 
-Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start casting, and horizontal look speed drops to half. Eagle Eye slows it further with game time. Your mouse moves the same distance, but the camera turns less.
+[line]
 
-[b]Concise Mouse Consistency (CMC)[/b] undoes that. Horizontal look stays at freelook speed in each of those states. Everything else stays the way you set it.
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-01-features.png[/img][/center]
+
+Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start casting, and horizontal look speed drops to half. Eagle Eye slows it further with game time. Your mouse moves the same distance, but the camera turns less. [b]Concise Mouse Consistency (CMC)[/b] undoes that, and leaves everything else the way you set it.
+
+[list]
+[*][b]Full-rate sprint.[/b] Horizontal look stays at freelook speed while sprinting, in first and third person.
+[*][b]Steady bow aim.[/b] In first person, horizontal bow and crossbow aim is rebuilt from raw mouse movement, and pitch is normalized to your freelook feel.
+[*][b]Casting and other half-rate states.[/b] First-person states that Skyrim halves are restored to full speed.
+[*][b]Real-time slow-mo.[/b] During Eagle Eye and other slow-time effects, horizontal look runs at real-time speed in first and third person.
+[*][b]Your sensitivity, your way.[/b] One global scale, separate mouse and gamepad X/Y multipliers, bow aim multipliers, and opt-in per-state overlays (walking, running, sprinting, bow aim, magic, one-hand, two-handed, dual wielding). Every overlay ships disabled.
+[*][b]Optional third-person smoothing removal,[/b] on by default.
+[*][b]Live settings.[/b] Changes in the in-game menu or the INI apply without restarting Skyrim.
+[*][b]No plugin.[/b] Just a DLL and an INI, so it takes no load order slot.
+[/list]
 
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-look-speed.png[/img][/center]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-02-features.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-02-how-it-works.png[/img][/center]
 
+[b]What Skyrim does[/b]
 [list]
-[*][b]Full-rate sprint look[/b]: horizontal look is restored while sprinting, in first and third person.
-[*][b]Steady bow aim[/b]: in first person, horizontal bow and crossbow aim is rebuilt from raw mouse movement. Pitch is normalized to your freelook feel.
-[*][b]Casting and other half-rate states[/b]: first-person states measured at 0.5× are restored to full rate.
-[*][b]Real-time slow-mo[/b]: during Eagle Eye and other slow-time effects, horizontal look runs at real-time speed in first and third person.
-[*][b]Sensitivity controls[/b]: one global scale, separate mouse and gamepad X/Y multipliers, and bow aim multipliers.
-[*][b]Per-state overlays (opt-in)[/b]: walking, running, sprinting, bow aim, magic, one-hand, two-handed and dual wielding. Every overlay ships disabled.
-[*][b]Third-person smoothing removal[/b]: optional, on by default.
-[*][b]Alt-tab spike guard[/b]: drops the first mouse movement after a pause of 350 ms or more, where the alt-tab jump lands. Adjustable with [font=Courier New]iFocusSpikeGapMs[/font], or turn it off with [font=Courier New]bSuppressFocusSpike=false[/font].
-[*][b]Live settings[/b]: changes in the in-game menu or the INI apply without restarting Skyrim.
+[*]While you sprint, aim a bow in first person or cast in first person, the game scales horizontal turning by 0.5.
+[*]Eagle Eye and other slow-time effects slow camera turning along with game time.
 [/list]
 
-[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-features.png[/img][/center]
+[b]What CMC changes[/b]
+[list]
+[*]Each frame, CMC checks the turn scale the game applied. When it is half speed (0.48–0.52×), CMC restores the full turn. Frames already at full speed are left alone.
+[*]First-person bow aim rebuilds horizontal look from raw mouse movement. Vertical look keeps the game's own movement, with pitch normalized to freelook.
+[*]During slow time, horizontal look is converted back to real-time speed.
+[/list]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-03-requirements.png[/img]
+[b]What it leaves alone[/b]
+[list]
+[*]Normal freelook. With default settings it turns exactly as before.
+[*]Third-person bow aim and casting, which keep Skyrim's or your camera mod's own speed.
+[*]FOV and zoom. CMC never scales look speed by either.
+[/list]
+
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-03-requirements.png[/img][/center]
 
 [list]
-[*][url=https://skse.silverlock.org/]SKSE64[/url] for your game version. Skyrim 1.7.99 and 1.7.104 need SKSE 2.3.1.
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/30379]SKSE[/url] for your game version. Skyrim 1.7.99 and 1.7.104 need SKSE 2.3.1.
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]. Skyrim 1.7.99 and later need the format-5 [font=Courier New]versionlib-1-7-*.bin[/font] files.
-[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url] [i](optional, for the in-game settings menu)[/i]
+[*][i]Optional:[/i] [url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url] for the in-game settings page. Without it, everything is in an INI.
 [/list]
+Not required: SkyUI, an ESP, or any patch.
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-04-installation.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-04-installation.png[/img][/center]
 
-[list=1]
-[*]Install the main file with Mod Organizer 2, Vortex, or any mod manager.
-[*]Launch through SKSE.
+[b]New install:[/b] install with your mod manager and launch through SKSE. The archive holds two files, [font=Courier New]Data/SKSE/Plugins/MouseSensitivityFix.dll[/font] and [font=Courier New]MouseSensitivityFix.ini[/font]. There's nothing to enable in your load order.
+
+[b]Updating:[/b] just overwrite. If you edited your INI, keep your copy when the mod manager asks. It's safe mid-playthrough.
+
+[b]Uninstalling:[/b] remove the mod. CMC stores nothing in your save.
+
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-05-settings.png[/img][/center]
+
+Open [b]SKSE Menu Framework[/b] and go to [b]Concise Mouse Consistency / Settings[/b]. Changes apply live. Press [b]Save to INI[/b] to keep them.
+[list]
+[*][b]Settings:[/b]
+[list]
+[*]Enabled
+[*]Global sensitivity
+[*]Mouse X/Y multiplier and gamepad X/Y multiplier
+[*]Mouse bow X/Y (first person)
+[*]Remove third-person smoothing
+[*]Suppress focus spike (alt-tab)
+[*]Apply to gamepad look
+[*]Keep CMC 3rd-person smoothing removal with camera mods
+[*]Save to INI and Reload from INI
 [/list]
+[*][b]State Overrides:[/b] one page each for Walking, Running, Sprinting, Bow pullback aiming, Magic use, One Hand, Two Handed and Dual Wielding. Each has X/Y sensitivity and first/third-person toggles, and stays disabled until you turn it on.
+[/list]
+No Menu Framework? Every option is in [i]Data/SKSE/Plugins/MouseSensitivityFix.ini[/i], with comments. Gamepad bow multipliers and other advanced options are only in the INI's [font=Courier New][Advanced][/font] section.
 
-The archive contains two files: [font=Courier New]Data/SKSE/Plugins/MouseSensitivityFix.dll[/font] and [font=Courier New]MouseSensitivityFix.ini[/font]. There is no ESP, ESL or ESM, so it takes no load order slot. You can add or remove it mid-playthrough.
-
-[b]Updating:[/b] overwrite the old files. If you edited your INI, keep your copy when the mod manager asks.
-
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-05-configuration.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-06-compatibility.png[/img][/center]
 
 [list]
-[*][b]In game:[/b] SKSE Menu Framework → [i]Concise Mouse Consistency / Settings[/i]. Changes apply right away. Press [b]Save to INI[/b] to keep them.
-[*][b]INI:[/b] [font=Courier New]Data/SKSE/Plugins/MouseSensitivityFix.ini[/font]. Saved edits are picked up while the game is running.
-[*]Gamepad bow multipliers and the other advanced settings are in the INI [font=Courier New][Advanced][/font] section.
-[*]Leave [font=Courier New]bVerboseLogging=false[/font] unless you are collecting logs for a bug report.
-[/list]
-
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-06-compatibility.png[/img]
-
-[list]
-[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170. [b]Skyrim VR is not supported.[/b] From 1.0.2, CMC refuses to load on VR.
-[*][b]SmoothCam / Improved Camera:[/b] compatible. CMC detects them. By default it still removes third-person smoothing; turn [i]Keep third-person smoothing removal with camera mods[/i] off to leave smoothing to the camera mod.
+[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170.
+[*][b]SmoothCam and Improved Camera:[/b] compatible. CMC detects them. By default it still removes third-person smoothing; turn off [i]Keep CMC 3rd-person smoothing removal with camera mods[/i] to leave smoothing to the camera mod.
 [*][b]Other mouse or sensitivity mods:[/b] anything else that edits look input can stack with CMC. Use one or the other.
+[*][b]Skyrim VR:[/b] not supported. From 1.0.2, CMC refuses to load on VR.
 [/list]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-07-known-limits.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-07-faq.png[/img][/center]
 
 [list]
-[*]Third-person bow aim and third-person casting keep Skyrim's own look speed or your camera mod's. Neither has been measured as a clean half-rate state, so CMC leaves them alone.
-[*]CMC does not scale look speed by FOV or zoom.
-[*]CMC does not change third-person vertical look (pitch).
-[*]First-person horizontal look measured at about half speed (0.48–0.52×) is restored to full speed. A combat or animation mod that deliberately halves turn speed in first person will have that effect undone.
+[*][b]Will this change how my normal look feels?[/b] No. With default settings, freelook is untouched. CMC only steps in where Skyrim slows turning.
+[*][b]Third-person bow aim still feels slower.[/b] By design for now. Third-person bow aim and casting haven't measured as a clean half-speed state, so CMC leaves them to Skyrim or your camera mod.
+[*][b]My first mouse movement after a pause seems to get dropped.[/b] That's [i]Suppress focus spike (alt-tab)[/i]. It ignores the first movement after 350 ms of stillness. Raise [font=Courier New]iFocusSpikeGapMs[/font] or set [font=Courier New]bSuppressFocusSpike=false[/font].
+[*][b]A combat mod slows my first-person turning on purpose, and CMC undoes it.[/b] CMC restores any first-person turning that runs at about half speed. Setting [font=Courier New]bEnableFirstPersonHook=false[/font] keeps the other mod's behavior, but turns off all of CMC's first-person corrections.
+[*][b]Does it scale with FOV or zoom?[/b] No, on purpose.
 [/list]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-08-changelog.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-08-changelog.png[/img][/center]
 
 [b]1.0.2[/b]
 [list]
@@ -88,23 +118,27 @@ The archive contains two files: [font=Courier New]Data/SKSE/Plugins/MouseSensiti
 
 Full history: [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/blob/main/CHANGELOG.md]CHANGELOG on GitHub[/url]
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-09-support.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-09-support.png[/img][/center]
 
 Found a bug? Please include:
 [list]
 [*]Your Skyrim version and store (Steam or GOG)
 [*][font=Courier New]Documents/My Games/Skyrim Special Edition/SKSE/MouseSensitivityFix.log[/font]
-[*]Any camera mods you use
+[*]What you were doing (sprinting, bow aim, casting, first or third person) and any camera mods you use
 [/list]
-For problems with turn speed, set [font=Courier New]bVerboseLogging=true[/font], reproduce the problem, and attach the log. Bug reports go here or in [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/issues]GitHub Issues[/url].
+For problems with turn speed, set [font=Courier New]bVerboseLogging=true[/font] in [font=Courier New]MouseSensitivityFix.ini[/font], reproduce the problem, and attach the log. Bug reports go here or in [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/issues]GitHub Issues[/url].
 
-[img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-10-credits.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-10-permissions.png[/img][/center]
+
+The source code is public on GitHub. No open-source license has been chosen yet, so please ask before re-uploading CMC or sharing modified versions.
+
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-11-credits.png[/img][/center]
 
 [list]
 [*]SKSE team: [url=https://skse.silverlock.org/]SKSE64[/url]
 [*]meh321: [url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]
-[*]alandtse and contributors: [url=https://github.com/alandtse/CommonLibSSE-NG]CommonLibSSE-NG[/url]
-[*]Thiago099: [url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url]
+[*]Ryan McKenzie, CharmedBaryon, alandtse and contributors: [url=https://github.com/alandtse/CommonLibSSE-NG]CommonLibSSE-NG[/url]
+[*]Thiago099 and QTR-Modding: [url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url]
 [/list]
 
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-divider-1200x48.png[/img]
