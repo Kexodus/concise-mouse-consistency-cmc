@@ -19,15 +19,13 @@ Upload these on the Nexus **Images** tab. Make the primary image the mod's **Pri
 |---|---|---|
 | [`cmc-primary-1920x1080.png`](nexus/cmc-primary-1920x1080.png) | 1920×1080 | Primary image / thumbnail |
 | [`cmc-gallery-look-speed-1920x1080.png`](nexus/cmc-gallery-look-speed-1920x1080.png) | 1920×1080 | Gallery: vanilla vs CMC look speed |
-| [`cmc-gallery-features-1920x1080.png`](nexus/cmc-gallery-features-1920x1080.png) | 1920×1080 | Gallery: what CMC fixes |
-| [`cmc-gallery-at-a-glance-1920x1080.png`](nexus/cmc-gallery-at-a-glance-1920x1080.png) | 1920×1080 | Gallery: no ESP, two files, live settings |
+| [`cmc-gallery-features-1920x1080.png`](nexus/cmc-gallery-features-1920x1080.png) | 1920×1080 | Gallery: the four things CMC fixes |
 | [`cmc-header-1920x480.png`](nexus/cmc-header-1920x480.png) | 1920×480 | Description banner / page header |
 
 <p>
   <img src="nexus/cmc-primary-1920x1080.png" width="49%">
   <img src="nexus/cmc-gallery-look-speed-1920x1080.png" width="49%">
   <img src="nexus/cmc-gallery-features-1920x1080.png" width="49%">
-  <img src="nexus/cmc-gallery-at-a-glance-1920x1080.png" width="49%">
 </p>
 
 ## Description section headers
@@ -67,7 +65,7 @@ The transparent files are light artwork. Place them only on dark backgrounds.
 | Accent | `#89bedd` | Reticle dot. Use it for one detail per image at most. |
 | Type | Bahnschrift (Windows) | Uppercase headings with wide letter spacing |
 
-Keep it flat: no gradients, glows, textures, or extra colors. The reticle mark in the section headers is redrawn from the logo.
+Keep it flat: no gradients, glows, textures, or extra colors. One idea per image, no taglines or spec badges. The reticle mark in the section headers is redrawn from the logo.
 
 ## Rebuild
 

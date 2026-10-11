@@ -1,7 +1,6 @@
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-header-1920x480.png[/img]
 
-[size=4][color=#f2eeea]One look speed in every camera state.[/color][/size]
-[color=#89bedd]SKSE plugin · DLL only · No ESP[/color][/center]
+[size=4][color=#f2eeea]One look speed in every camera state.[/color][/size][/center]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-01-about.png[/img]
 
@@ -109,4 +108,4 @@ For problems with turn speed, set [font=Courier New]bVerboseLogging=true[/font],
 [/list]
 
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-divider-1200x48.png[/img]
-[color=#89bedd]Source:[/color] [url=https://github.com/Kexodus/concise-mouse-consistency-cmc]github.com/Kexodus/concise-mouse-consistency-cmc[/url][/center]
+[url=https://github.com/Kexodus/concise-mouse-consistency-cmc]github.com/Kexodus/concise-mouse-consistency-cmc[/url][/center]

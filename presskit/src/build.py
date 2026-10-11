@@ -95,18 +95,12 @@ def primary() -> str:
     .logo { height: 760px; }
     .text { width: 760px; }
     .name { font-size: 64px; line-height: 1.12; letter-spacing: 0.2em; }
-    .tag { font-size: 34px; margin-top: 40px; letter-spacing: 0.04em; }
-    .meta { font-size: 22px; margin-top: 56px; display: flex; align-items: center; gap: 18px; }
-    .rule { margin-top: 44px; width: 140px; }
     """
     body = f"""
     <div class="wrap">
       <img class="logo" src="{img('cmc-logo-transparent.png')}">
       <div class="text">
         <div class="name caps semi">Concise<br>Mouse<br>Consistency</div>
-        <div class="rule"></div>
-        <div class="tag muted">One look speed in every camera state.</div>
-        <div class="meta caps dim"><span class="dot"></span>SKSE plugin &nbsp;·&nbsp; No ESP</div>
       </div>
     </div>"""
     return page(body, css)
@@ -114,15 +108,13 @@ def primary() -> str:
 
 def header() -> str:
     css = """
-    .line { position: absolute; left: 0; right: 0; top: 295px; height: 2px; background: rgba(242,238,234,0.12); }
     .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-    .lock { display: flex; align-items: center; gap: 56px; background: #0b0b0d; padding: 0 64px; }
+    .lock { display: flex; align-items: center; gap: 56px; }
     .emblem { height: 300px; }
     .word { height: 132px; display: block; }
     .name { font-size: 30px; margin-top: 28px; }
     """
     body = f"""
-    <div class="line"></div>
     <div class="wrap"><div class="lock">
       <img class="emblem" src="{img('cmc-emblem-transparent.png')}">
       <div><img class="word" src="{img('cmc-wordmark-transparent.png')}">
@@ -135,119 +127,72 @@ def section(title: str) -> str:
     css = """
     .wrap { position: absolute; inset: 0; display: flex; align-items: center; gap: 28px; padding: 0 8px; }
     .t { font-size: 40px; white-space: nowrap; }
-    .rule { flex: 1; }
     """
-    body = f"""<div class="wrap">{mark(64)}<div class="t caps semi">{title}</div><div class="rule"></div><span class="dot" style="width:10px;height:10px"></span></div>"""
+    body = f"""<div class="wrap">{mark(64)}<div class="t caps semi">{title}</div></div>"""
     return page(body, css)
 
 
 def divider() -> str:
     css = """
-    .wrap { position: absolute; inset: 0; display: flex; align-items: center; gap: 24px; padding: 0 8px; }
-    .rule { flex: 1; }
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
     """
-    return page(f'<div class="wrap"><div class="rule"></div>{mark(32)}<div class="rule"></div></div>', css)
+    return page(f'<div class="wrap">{mark(32)}</div>', css)
 
 
 def states() -> str:
     rows = [
-        ("Freelook", 1.0, False),
-        ("Sprint · 1st person", 0.5, False),
-        ("Sprint · 3rd person", 0.5, True),
-        ("Bow aim · 1st person", 0.5, False),
-        ("Casting · 1st person", 0.5, False),
+        ("Freelook", 1.0),
+        ("Sprint · 1st person", 0.5),
+        ("Sprint · 3rd person", 0.5),
+        ("Bow aim · 1st person", 0.5),
+        ("Casting · 1st person", 0.5),
     ]
     css = """
-    .wrap { position: absolute; inset: 120px 160px; display: flex; flex-direction: column; }
+    .wrap { position: absolute; inset: 150px 200px; display: flex; flex-direction: column; }
     .h { font-size: 54px; letter-spacing: 0.2em; }
-    .sub { font-size: 28px; margin-top: 20px; }
-    .legend { display: flex; gap: 48px; margin-top: 44px; font-size: 22px; }
+    .legend { display: flex; gap: 48px; margin-top: 48px; font-size: 22px; }
     .legend span { display: inline-flex; align-items: center; gap: 14px; }
     .sw { width: 40px; height: 10px; border-radius: 5px; display: inline-block; }
-    .rows { margin-top: 70px; display: flex; flex-direction: column; gap: 54px; }
-    .row { display: grid; grid-template-columns: 420px 1fr 170px; align-items: center; column-gap: 40px; }
+    .rows { margin-top: 90px; display: flex; flex-direction: column; gap: 64px; }
+    .row { display: grid; grid-template-columns: 440px 1fr; align-items: center; column-gap: 40px; }
     .label { font-size: 28px; }
-    .new { font-size: 16px; color: #89bedd; letter-spacing: 0.25em; margin-left: 12px; }
     .bars { display: flex; flex-direction: column; gap: 10px; }
     .bar { height: 12px; border-radius: 6px; }
     .v { background: rgba(242,238,234,0.22); }
-    .c { background: #f2eeea; position: relative; }
-    .c::after { content: ''; position: absolute; right: -6px; top: -5px; width: 22px; height: 22px; border-radius: 50%; background: #89bedd; }
-    .num { font-size: 26px; text-align: right; }
-    .foot { margin-top: auto; font-size: 22px; }
+    .c { background: #f2eeea; }
     """
     body_rows = "".join(
-        f"""<div class="row"><div class="label">{name}{'<span class="new caps">new</span>' if new else ''}</div>
-        <div class="bars"><div class="bar v" style="width:{v * 100:.0f}%"></div><div class="bar c" style="width:100%"></div></div>
-        <div class="num"><span class="dim">{v:.1f}× →</span> 1.0×</div></div>"""
-        for name, v, new in rows
+        f"""<div class="row"><div class="label">{name}</div>
+        <div class="bars"><div class="bar v" style="width:{v * 100:.0f}%"></div><div class="bar c" style="width:100%"></div></div></div>"""
+        for name, v in rows
     )
     body = f"""
     <div class="wrap">
       <div class="h caps semi">Horizontal look speed</div>
-      <div class="sub muted">Measured against freelook. Skyrim halves yaw in these states; CMC restores it.</div>
       <div class="legend caps muted">
         <span><i class="sw" style="background:rgba(242,238,234,0.22)"></i>Vanilla</span>
-        <span><i class="sw" style="background:#f2eeea"></i>With CMC</span>
+        <span><i class="sw" style="background:#f2eeea"></i>CMC</span>
       </div>
       <div class="rows">{body_rows}</div>
-      <div class="foot dim">Eagle Eye and other slow-time effects: look input is converted to real time.</div>
     </div>"""
     return page(body, css)
 
 
 def features() -> str:
-    cards = [
-        ("sprint", "Full-rate sprint", "Sprinting no longer halves horizontal look, in first or third person."),
-        ("bow", "Steady bow aim", "First-person bow and crossbow aim keep full horizontal speed and steady pitch."),
-        ("time", "Real-time slow-mo", "Eagle Eye and slow-time no longer drag your horizontal look."),
-        ("sliders", "Live tuning", "Global, per-axis, and bow multipliers. Changes apply instantly."),
+    items = [
+        ("sprint", "Sprint"),
+        ("bow", "Bow aim"),
+        ("time", "Slow time"),
+        ("sliders", "Tuning"),
     ]
     css = """
-    .wrap { position: absolute; inset: 120px 140px; display: flex; flex-direction: column; }
-    .top { display: flex; align-items: center; gap: 36px; }
-    .h { font-size: 54px; letter-spacing: 0.2em; }
-    .grid { margin-top: 90px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; }
-    .card { border: 2px solid rgba(242,238,234,0.14); border-radius: 18px; padding: 52px 40px; min-height: 470px; }
-    .ct { font-size: 32px; margin-top: 44px; letter-spacing: 0.12em; }
-    .cd { font-size: 26px; line-height: 1.45; margin-top: 22px; }
-    .foot { margin-top: auto; display: flex; align-items: center; gap: 18px; font-size: 22px; }
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .grid { display: grid; grid-template-columns: repeat(4, 340px); gap: 40px; }
+    .item { display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .t { font-size: 30px; margin-top: 48px; letter-spacing: 0.24em; white-space: nowrap; }
     """
-    grid = "".join(
-        f'<div class="card">{icon(k, 96)}<div class="ct caps semi">{t}</div><div class="cd muted">{d}</div></div>'
-        for k, t, d in cards
-    )
-    body = f"""
-    <div class="wrap">
-      <div class="top">{mark(72)}<div class="h caps semi">What CMC fixes</div></div>
-      <div class="grid">{grid}</div>
-      <div class="foot caps dim"><span class="dot"></span>DLL only &nbsp;·&nbsp; No ESP &nbsp;·&nbsp; Menu Framework optional &nbsp;·&nbsp; SmoothCam &amp; Improved Camera aware</div>
-    </div>"""
-    return page(body, css)
-
-
-def glance() -> str:
-    stats = [
-        ("0", "plugin slots", "No ESP, ESL, or ESM."),
-        ("2", "files", "One DLL, one INI."),
-        ("Live", "settings", "In-game menu or INI. No restart."),
-    ]
-    css = """
-    .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .row { display: flex; gap: 0; }
-    .s { width: 500px; text-align: center; padding: 0 40px; }
-    .s + .s { border-left: 2px solid rgba(242,238,234,0.14); }
-    .n { font-size: 150px; line-height: 1; font-weight: 600; }
-    .l { font-size: 30px; margin-top: 26px; }
-    .d { font-size: 26px; margin-top: 18px; }
-    .logo { height: 120px; margin-bottom: 110px; }
-    """
-    cols = "".join(
-        f'<div class="s"><div class="n">{n}</div><div class="l caps blue">{l}</div><div class="d muted">{d}</div></div>'
-        for n, l, d in stats
-    )
-    body = f'<div class="wrap"><img class="logo" src="{img("cmc-wordmark-transparent.png")}"><div class="row">{cols}</div></div>'
-    return page(body, css)
+    grid = "".join(f'<div class="item">{icon(k, 120)}<div class="t caps semi">{t}</div></div>' for k, t in items)
+    return page(f'<div class="wrap"><div class="grid">{grid}</div></div>', css)
 
 
 SECTIONS = [
@@ -262,7 +207,6 @@ def jobs() -> list[tuple[str, str, int, int]]:
         ("cmc-header-1920x480.png", header(), 1920, 480),
         ("cmc-gallery-features-1920x1080.png", features(), 1920, 1080),
         ("cmc-gallery-look-speed-1920x1080.png", states(), 1920, 1080),
-        ("cmc-gallery-at-a-glance-1920x1080.png", glance(), 1920, 1080),
         ("cmc-divider-1200x48.png", divider(), 1200, 48),
     ]
     for i, title in enumerate(SECTIONS, 1):
