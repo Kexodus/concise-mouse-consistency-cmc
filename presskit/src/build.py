@@ -129,6 +129,16 @@ def primary() -> str:
     return page(body, css)
 
 
+def thumbnail() -> str:
+    # Nexus tiles show the primary image at roughly 16:9 and a few hundred pixels wide, sometimes
+    # centre-cropped. Logo only, centred, sized to survive both.
+    css = """
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .logo { height: 78%; }
+    """
+    return page(f'<div class="wrap"><img class="logo" src="{img("cmc-logo-transparent.png")}"></div>', css)
+
+
 def header() -> str:
     css = """
     .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
@@ -227,6 +237,7 @@ SECTIONS = [
 def jobs() -> list[tuple[str, str, int, int]]:
     out = [
         # Uploads (Images tab): full-bleed.
+        ("cmc-thumbnail-1280x720.png", thumbnail(), 1280, 720),
         ("cmc-primary-1920x1080.png", primary(), 1920, 1080),
         ("cmc-header-1920x480.png", header(), 1920, 480),
         ("cmc-gallery-features-1920x1080.png", features(), 1920, 1080),

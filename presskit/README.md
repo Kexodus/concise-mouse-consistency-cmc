@@ -13,16 +13,18 @@ Art and copy for the **Concise Mouse Consistency (CMC)** Nexus page. Everything 
 
 ## Nexus page images
 
-Upload these on the Nexus **Images** tab. Make the primary image the mod's **Primary image**.
+Upload these on the Nexus **Images** tab. Set the thumbnail as the mod's **Primary image**; Nexus uses that image for the mod tile in search and browse.
 
 | Image | Size | Use |
 |---|---|---|
-| [`cmc-primary-1920x1080.png`](nexus/cmc-primary-1920x1080.png) | 1920×1080 | Primary image / thumbnail |
+| [`cmc-thumbnail-1280x720.png`](nexus/cmc-thumbnail-1280x720.png) | 1280×720 | **Nexus thumbnail** (set as Primary image). Centered logo only, readable at tile size and safe under center crops. |
+| [`cmc-primary-1920x1080.png`](nexus/cmc-primary-1920x1080.png) | 1920×1080 | Gallery: logo and full name |
 | [`cmc-gallery-look-speed-1920x1080.png`](nexus/cmc-gallery-look-speed-1920x1080.png) | 1920×1080 | Gallery: vanilla vs CMC look speed |
 | [`cmc-gallery-features-1920x1080.png`](nexus/cmc-gallery-features-1920x1080.png) | 1920×1080 | Gallery: the four things CMC fixes |
 | [`cmc-header-1920x480.png`](nexus/cmc-header-1920x480.png) | 1920×480 | Description banner / page header |
 
 <p>
+  <img src="nexus/cmc-thumbnail-1280x720.png" width="49%">
   <img src="nexus/cmc-primary-1920x1080.png" width="49%">
   <img src="nexus/cmc-gallery-look-speed-1920x1080.png" width="49%">
   <img src="nexus/cmc-gallery-features-1920x1080.png" width="49%">
