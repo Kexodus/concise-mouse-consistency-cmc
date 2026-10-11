@@ -21,7 +21,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 [*][b]Sensitivity controls[/b]: one global scale, separate mouse and gamepad X/Y multipliers, and bow aim multipliers.
 [*][b]Per-state overlays (opt-in)[/b]: walking, running, sprinting, bow aim, magic, one-hand, two-handed and dual wielding. Every overlay ships disabled.
 [*][b]Third-person smoothing removal[/b]: optional, on by default.
-[*][b]Alt-tab spike guard[/b]: drops the first mouse movement after a pause of 350 ms or more, where the alt-tab jump lands. Adjustable with [code]iFocusSpikeGapMs[/code], or turn it off with [code]bSuppressFocusSpike=false[/code].
+[*][b]Alt-tab spike guard[/b]: drops the first mouse movement after a pause of 350 ms or more, where the alt-tab jump lands. Adjustable with [font=Courier New]iFocusSpikeGapMs[/font], or turn it off with [font=Courier New]bSuppressFocusSpike=false[/font].
 [*][b]Live settings[/b]: changes in the in-game menu or the INI apply without restarting Skyrim.
 [/list]
 
@@ -31,7 +31,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 
 [list]
 [*][url=https://skse.silverlock.org/]SKSE64[/url] for your game version. Skyrim 1.7.99 and 1.7.104 need SKSE 2.3.1.
-[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]. Skyrim 1.7.99 and later need the format-5 [code]versionlib-1-7-*.bin[/code] files.
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]. Skyrim 1.7.99 and later need the format-5 [font=Courier New]versionlib-1-7-*.bin[/font] files.
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/120352]SKSE Menu Framework[/url] [i](optional, for the in-game settings menu)[/i]
 [/list]
 
@@ -42,7 +42,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 [*]Launch through SKSE.
 [/list]
 
-The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[/code] and [code]MouseSensitivityFix.ini[/code]. There is no ESP, ESL or ESM, so it takes no load order slot. You can add or remove it mid-playthrough.
+The archive contains two files: [font=Courier New]Data/SKSE/Plugins/MouseSensitivityFix.dll[/font] and [font=Courier New]MouseSensitivityFix.ini[/font]. There is no ESP, ESL or ESM, so it takes no load order slot. You can add or remove it mid-playthrough.
 
 [b]Updating:[/b] overwrite the old files. If you edited your INI, keep your copy when the mod manager asks.
 
@@ -50,9 +50,9 @@ The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[
 
 [list]
 [*][b]In game:[/b] SKSE Menu Framework → [i]Concise Mouse Consistency / Settings[/i]. Changes apply right away. Press [b]Save to INI[/b] to keep them.
-[*][b]INI:[/b] [code]Data/SKSE/Plugins/MouseSensitivityFix.ini[/code]. Saved edits are picked up while the game is running.
-[*]Gamepad bow multipliers and the other advanced settings are in the INI [code][Advanced][/code] section.
-[*]Leave [code]bVerboseLogging=false[/code] unless you are collecting logs for a bug report.
+[*][b]INI:[/b] [font=Courier New]Data/SKSE/Plugins/MouseSensitivityFix.ini[/font]. Saved edits are picked up while the game is running.
+[*]Gamepad bow multipliers and the other advanced settings are in the INI [font=Courier New][Advanced][/font] section.
+[*]Leave [font=Courier New]bVerboseLogging=false[/font] unless you are collecting logs for a bug report.
 [/list]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-06-compatibility.png[/img]
@@ -94,10 +94,10 @@ Full history: [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/blob
 Found a bug? Please include:
 [list]
 [*]Your Skyrim version and store (Steam or GOG)
-[*][code]Documents/My Games/Skyrim Special Edition/SKSE/MouseSensitivityFix.log[/code]
+[*][font=Courier New]Documents/My Games/Skyrim Special Edition/SKSE/MouseSensitivityFix.log[/font]
 [*]Any camera mods you use
 [/list]
-For problems with turn speed, set [code]bVerboseLogging=true[/code], reproduce the problem, and attach the log. Bug reports go here or in [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/issues]GitHub Issues[/url].
+For problems with turn speed, set [font=Courier New]bVerboseLogging=true[/font], reproduce the problem, and attach the log. Bug reports go here or in [url=https://github.com/Kexodus/concise-mouse-consistency-cmc/issues]GitHub Issues[/url].
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-10-credits.png[/img]
 
