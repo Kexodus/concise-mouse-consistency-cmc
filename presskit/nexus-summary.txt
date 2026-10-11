@@ -1,1 +1,1 @@
-Keeps mouse and gamepad look speed the same in every camera state. Restores full horizontal look while sprinting, aiming bows, casting, and in Eagle Eye. SKSE DLL only, no ESP.
+Keeps mouse and gamepad look speed the same in every camera state. Restores full horizontal look while sprinting, aiming bows, casting, and in Eagle Eye.
