@@ -21,7 +21,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 [*][b]Sensitivity controls[/b]: one global scale, separate mouse and gamepad X/Y multipliers, and bow aim multipliers.
 [*][b]Per-state overlays (opt-in)[/b]: walking, running, sprinting, bow aim, magic, one-hand, two-handed and dual wielding. Every overlay ships disabled.
 [*][b]Third-person smoothing removal[/b]: optional, on by default.
-[*][b]Alt-tab spike guard[/b]: ignores the camera jump when the game window regains focus.
+[*][b]Alt-tab spike guard[/b]: drops the first mouse movement after a pause of 350 ms or more, where the alt-tab jump lands. Adjustable with [code]iFocusSpikeGapMs[/code], or turn it off with [code]bSuppressFocusSpike=false[/code].
 [*][b]Live settings[/b]: changes in the in-game menu or the INI apply without restarting Skyrim.
 [/list]
 
@@ -58,7 +58,7 @@ The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-06-compatibility.png[/img]
 
 [list]
-[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170. VR is not supported yet.
+[*][b]Game versions:[/b] one DLL for SE 1.5.97, AE 1.6.x, AE 1.7.99 / 1.7.104 and GOG. In-game testing so far has been on Steam AE 1.6.1170. [b]Skyrim VR is not supported. Do not install CMC on VR.[/b]
 [*][b]SmoothCam / Improved Camera:[/b] compatible. CMC detects them. By default it still removes third-person smoothing; turn [i]Keep third-person smoothing removal with camera mods[/i] off to leave smoothing to the camera mod.
 [*][b]Other mouse or sensitivity mods:[/b] anything else that edits look input can stack with CMC. Use one or the other.
 [/list]
@@ -69,6 +69,7 @@ The archive contains two files: [code]Data/SKSE/Plugins/MouseSensitivityFix.dll[
 [*]Third-person bow aim and third-person casting keep Skyrim's own look speed or your camera mod's. Neither has been measured as a clean half-rate state, so CMC leaves them alone.
 [*]CMC does not scale look speed by FOV or zoom.
 [*]CMC does not change third-person vertical look (pitch).
+[*]First-person horizontal look measured at about half speed (0.48–0.52×) is restored to full speed. A combat or animation mod that deliberately halves turn speed in first person will have that effect undone.
 [/list]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-08-changelog.png[/img]
