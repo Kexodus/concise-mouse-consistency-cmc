@@ -11,6 +11,43 @@ Art and copy for the **Concise Mouse Consistency (CMC)** Nexus page. Everything 
 | [`nexus-description.bbcode.txt`](nexus-description.bbcode.txt) | Nexus **Description** field (BBCode). Images load from this repo's `main` branch. |
 | [`nexus-summary.txt`](nexus-summary.txt) | Nexus **Brief overview** (under 255 characters) |
 
+## Nexus permissions tab
+
+CMC is **GPL-3.0-or-later** ([`LICENSE`](../LICENSE)). The GPL already grants these permissions and forbids adding restrictions (GPL-3 §10), so every Nexus toggle is **allowed, with the GPL conditions**:
+
+| Nexus permission | Setting |
+|---|---|
+| Upload permission | Allowed to upload to other sites, with credit |
+| Modification permission | Allowed to modify and release, with credit |
+| Conversion permission | Allowed to convert to other games, with credit |
+| Asset use permission | Allowed to use in other mods, with credit |
+| Asset use in mods/files being sold | Allowed (choosing "No" would add a restriction the GPL forbids) |
+| Asset use in mods/files earning Donation Points | Allowed |
+| Donation Points for this mod | Your choice |
+
+Custom permission instructions:
+
+```text
+Concise Mouse Consistency is free software, licensed GPL-3.0-or-later (https://www.gnu.org/licenses/gpl-3.0.html).
+You may re-upload, modify, translate, port and include it in other works, provided that:
+- your version is also licensed GPL-3.0-or-later,
+- you provide the complete corresponding source code (or a link to it) with any binary you distribute,
+- you keep the copyright and license notices and credit the original author.
+Source code: https://github.com/Kexodus/concise-mouse-consistency-cmc
+```
+
+Credits (the "Credits" text box):
+
+```text
+SKSE team: SKSE64
+meh321: Address Library for SKSE Plugins
+Ryan McKenzie, CharmedBaryon, alandtse and contributors: CommonLibSSE-NG
+Thiago099 and QTR-Modding: SKSE Menu Framework
+spdlog, fmt, xbyak, rapidcsv, DirectXMath, DirectXTK
+```
+
+The GPL source obligation is met by the public repository and its release tags, which the description links to. The release ZIP stays DLL + INI only.
+
 ## Nexus page images
 
 Upload these on the Nexus **Images** tab. Set the thumbnail as the mod's **Primary image**; Nexus uses that image for the mod tile in search and browse.

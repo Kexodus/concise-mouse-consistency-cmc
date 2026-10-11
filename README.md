@@ -80,3 +80,7 @@ See `docs/RUNTIME_VALIDATION.md` for current evidence and pending playtests. Do 
 - `docs/PUBLISHING.md`
 - `docs/research.md`
 - `presskit/README.md` (Nexus page art and copy-paste BBCode)
+
+## License
+
+GPL-3.0-or-later (see [LICENSE](LICENSE)), as required by CommonLibSSE-NG. Releases up to 0.53.x were built on the MIT-licensed CommonLibSSE 3.5.3; from 0.54b on, CMC links CommonLibSSE-NG v7.

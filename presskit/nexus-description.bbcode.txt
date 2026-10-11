@@ -130,7 +130,7 @@ For problems with turn speed, set [font=Courier New]bVerboseLogging=true[/font] 
 
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-10-permissions.png[/img][/center]
 
-The source code is public on GitHub. No open-source license has been chosen yet, so please ask before re-uploading CMC or sharing modified versions.
+Free software under the GNU General Public License v3.0 or later, as CommonLibSSE-NG requires. You may share, modify and re-upload it, as long as your version stays GPL-3.0-or-later, links its source and keeps the credits.
 
 [center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-11-credits.png[/img][/center]
 
