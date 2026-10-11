@@ -1,4 +1,4 @@
-[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-header-1920x480.png[/img]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-header.png[/img]
 
 [size=4][color=#f2eeea]One look speed in every camera state.[/color][/size][/center]
 
@@ -8,7 +8,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 
 [b]Concise Mouse Consistency (CMC)[/b] undoes that. Horizontal look stays at freelook speed in each of those states. Everything else stays the way you set it.
 
-[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-gallery-look-speed-1920x1080.png[/img][/center]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-look-speed.png[/img][/center]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-02-features.png[/img]
 
@@ -24,7 +24,7 @@ Skyrim quietly changes how fast your camera turns. Sprint, draw a bow, or start 
 [*][b]Live settings[/b]: changes in the in-game menu or the INI apply without restarting Skyrim.
 [/list]
 
-[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/cmc-gallery-features-1920x1080.png[/img][/center]
+[center][img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/desc-features.png[/img][/center]
 
 [img]https://raw.githubusercontent.com/Kexodus/concise-mouse-consistency-cmc/main/presskit/nexus/section-03-requirements.png[/img]
 

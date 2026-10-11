@@ -86,6 +86,29 @@ def page(body: str, css: str = "") -> str:
     return f"<!doctype html><html><head><meta charset='utf-8'><style>{BASE_CSS}{css}</style></head><body>{body}</body></html>"
 
 
+# Description-only framing: the same artwork sits in a rounded card with a faint edge and a soft
+# shadow on a transparent canvas, so it blends into the Nexus page instead of ending in a hard box.
+CARD_SMALL = (12, 16, 1, "0 4px 10px rgba(0,0,0,0.35)")
+CARD_LARGE = (24, 30, 2, "0 10px 24px rgba(0,0,0,0.35)")
+
+
+def framed(html: str, card: tuple[int, int, int, str]) -> str:
+    pad, radius, border, shadow = card
+    frame_css = (
+        f"html, body {{ background: transparent; }}"
+        f".card {{ position: absolute; inset: {pad}px; background: {BG}; border-radius: {radius}px;"
+        f" border: {border}px solid rgba(242,238,234,0.09); box-shadow: {shadow}; overflow: hidden; }}"
+    )
+    head, body = html.split("<body>", 1)
+    body = body.rsplit("</body>", 1)[0]
+    head = head.replace("</style>", frame_css + "</style>")
+    return f'{head}<body><div class="card">{body}</div></body></html>'
+
+
+def transparent(html: str) -> str:
+    return html.replace("</style>", "html, body { background: transparent; }</style>", 1)
+
+
 # --- compositions -----------------------------------------------------------
 
 
@@ -125,7 +148,7 @@ def header() -> str:
 
 def section(title: str) -> str:
     css = """
-    .wrap { position: absolute; inset: 0; display: flex; align-items: center; gap: 28px; padding: 0 8px; }
+    .wrap { position: absolute; inset: 0; display: flex; align-items: center; gap: 28px; padding: 0 22px; }
     .t { font-size: 40px; white-space: nowrap; }
     """
     body = f"""<div class="wrap">{mark(64)}<div class="t caps semi">{title}</div></div>"""
@@ -203,15 +226,20 @@ SECTIONS = [
 
 def jobs() -> list[tuple[str, str, int, int]]:
     out = [
+        # Uploads (Images tab): full-bleed.
         ("cmc-primary-1920x1080.png", primary(), 1920, 1080),
         ("cmc-header-1920x480.png", header(), 1920, 480),
         ("cmc-gallery-features-1920x1080.png", features(), 1920, 1080),
         ("cmc-gallery-look-speed-1920x1080.png", states(), 1920, 1080),
-        ("cmc-divider-1200x48.png", divider(), 1200, 48),
+        # Description (BBCode): framed cards on transparent canvases.
+        ("desc-header.png", framed(header(), CARD_LARGE), 1920, 528),
+        ("desc-features.png", framed(features(), CARD_LARGE), 1920, 640),
+        ("desc-look-speed.png", framed(states(), CARD_LARGE), 1920, 1128),
+        ("cmc-divider-1200x48.png", transparent(divider()), 1200, 48),
     ]
     for i, title in enumerate(SECTIONS, 1):
         slug = title.lower().replace(" ", "-")
-        out.append((f"section-{i:02d}-{slug}.png", section(title), 1200, 112))
+        out.append((f"section-{i:02d}-{slug}.png", framed(section(title), CARD_SMALL), 1200, 136))
     return out
 
 
@@ -221,7 +249,8 @@ def render(html: str, dest: Path, w: int, h: int, work: Path) -> None:
     subprocess.run(
         [
             str(EDGE), "--headless=new", "--disable-gpu", "--hide-scrollbars",
-            "--force-device-scale-factor=1", f"--user-data-dir={work / 'profile'}",
+            "--force-device-scale-factor=1", "--default-background-color=00000000",
+            f"--user-data-dir={work / 'profile'}",
             f"--window-size={w},{h}", f"--screenshot={dest}", src.as_uri(),
         ],
         check=True, capture_output=True, timeout=120,

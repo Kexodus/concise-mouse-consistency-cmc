@@ -28,9 +28,17 @@ Upload these on the Nexus **Images** tab. Make the primary image the mod's **Pri
   <img src="nexus/cmc-gallery-features-1920x1080.png" width="49%">
 </p>
 
-## Description section headers
+## Description images
 
-The BBCode file already uses these. They are 1200×112, plus a 1200×48 divider.
+The BBCode file already uses these. Each sits in a rounded card with a faint edge and a soft shadow, on a transparent PNG, so it blends into the Nexus page. The gallery uploads above stay full-bleed.
+
+| Image | Size |
+|---|---|
+| [`desc-header.png`](nexus/desc-header.png) | 1920×528 |
+| [`desc-look-speed.png`](nexus/desc-look-speed.png) | 1920×1128 |
+| [`desc-features.png`](nexus/desc-features.png) | 1920×640 |
+| `section-*.png` | 1200×136 |
+| [`cmc-divider-1200x48.png`](nexus/cmc-divider-1200x48.png) | 1200×48, mark only |
 
 ![About](nexus/section-01-about.png)
 ![Features](nexus/section-02-features.png)
